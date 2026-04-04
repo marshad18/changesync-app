@@ -1196,7 +1196,7 @@ export default function Home() {
               <div className="reveal bg-foreground text-white rounded-xl p-8">
                 <h3 className="text-2xl mb-3 text-white" style={{ fontFamily: "var(--font-display)" }}>Root Cause</h3>
                 <p className="text-white/70 leading-relaxed max-w-3xl">
-                  The current procedure requires one person to manually update all 15 documents — a process that takes days — and then seek approval from 14 separate experts. With engineering changes occurring every other day, this manual, sequential process creates a systemic documentation debt that directly translates into safety incidents and production losses.
+                  The current procedure requires each document owner — a different person for each of the 15 document types — to independently become aware of the change, manually update their document, and then route it to their respective approver. With no central coordination, different owners learn of the change at different times, update at different speeds, and some miss it entirely. With engineering changes occurring every other day, this fragmented, uncoordinated process creates a systemic documentation debt that directly translates into safety incidents and production losses.
                 </p>
               </div>
             </section>
