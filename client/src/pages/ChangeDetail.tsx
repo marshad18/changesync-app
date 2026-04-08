@@ -56,6 +56,7 @@ export default function ChangeDetail() {
   const [expandedAnalysis, setExpandedAnalysis] = useState<number | null>(null);
 
   const { data, isLoading, refetch } = trpc.changeEvents.getById.useQuery({ id }, { enabled: !!id });
+  const { data: libraryDocs } = trpc.documents.list.useQuery();
   const analyzeMutation = trpc.changeEvents.analyzeImpact.useMutation();
   const generateMutation = trpc.changeEvents.generateDrafts.useMutation();
   const confirmMutation = trpc.analyses.confirmStatus.useMutation();
@@ -199,6 +200,26 @@ export default function ChangeDetail() {
           </div>
         )}
       </div>
+
+      {/* ── Empty Library Warning ── */}
+      {libraryDocs !== undefined && libraryDocs.length === 0 && (status === "draft" || status === "analysis_complete") && (
+        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Document Library is empty</p>
+            <p className="text-xs text-amber-400/80 mt-0.5">
+              No documents have been uploaded yet. The impact analysis needs documents to compare against.
+              Import your documents from GitHub or upload them manually before running the analysis.
+            </p>
+            <button
+              onClick={() => setLocation("/documents")}
+              className="text-xs text-amber-300 underline mt-2 hover:text-amber-200 transition-colors"
+            >
+              Go to Document Library →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── STEP 1: Run Analysis ── */}
       {(status === "draft" || status === "analysis_complete") && analyses.length === 0 && (

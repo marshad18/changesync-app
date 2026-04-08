@@ -78,3 +78,26 @@
 ## Gap Resolution (April 2026)
 - [x] Add routeForApproval mutation: new status "routed_for_approval", approverName field stored in reviewNotes, UI reflects routed vs approved states distinctly
 - [x] Diff highlighting in split view: render AI draft with inline change markers (added/updated sections highlighted in amber) vs original
+
+## Bug Fix (April 2026)
+- [ ] Fix impact analysis returning no documents for Part Change (motor upload) — investigate analyzeImpact procedure, document library query, and LLM prompt
+
+## GitHub Integration (April 2026)
+- [ ] Add GITHUB_TOKEN secret to platform
+- [ ] Build server-side GitHub helper: push file to marshad18/change-flow repo on document upload
+- [ ] Build server-side GitHub helper: list and import files from marshad18/change-flow repo into Document Library
+- [ ] Wire GitHub push into documents.upload procedure (after S3 upload, also commit to GitHub)
+- [ ] Add "Import from GitHub" button in Document Library UI
+- [ ] Show GitHub sync status (linked/not linked) on each document card
+- [x] Add warning on Impact Analysis screen if Document Library is empty
+- [ ] Update tests for GitHub-linked upload flow
+
+## GitHub Import Feature (April 2026)
+- [ ] Add GITHUB_TOKEN secret to platform for API access
+- [ ] Add GITHUB_REPO secret (marshad18/change-flow) as config
+- [ ] Build backend procedure: github.listFiles — lists all files in sample-documents folder from GitHub repo
+- [ ] Build backend procedure: github.importFiles — downloads selected files from GitHub, uploads to S3, saves to Document Library
+- [ ] Build Import from GitHub modal in Document Library: shows file list grouped by folder, checkboxes to select, Import button
+- [ ] Show already-imported badge on files already in the library
+- [x] Add warning on Impact Analysis screen if Document Library is empty
+- [x] Update tests for GitHub import procedure

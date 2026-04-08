@@ -284,3 +284,75 @@ describe("auth.logout", () => {
     expect(result).toEqual({ success: true });
   });
 });
+
+describe("github.listSampleDocs", () => {
+  beforeEach(() => {
+    vi.mock("./github", () => ({
+      listGitHubSampleDocs: vi.fn().mockResolvedValue([
+        {
+          name: "LubeMap-EOLA3A.xlsx",
+          path: "sample-documents/equipment-maps/LubeMap-EOLA3A.xlsx",
+          sha: "abc123",
+          size: 12345,
+          downloadUrl: "https://raw.githubusercontent.com/marshad18/change-flow/main/sample-documents/equipment-maps/LubeMap-EOLA3A.xlsx",
+          folder: "equipment-maps",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        {
+          name: "SafetyMap-EOLA3A.pdf",
+          path: "sample-documents/equipment-maps/SafetyMap-EOLA3A.pdf",
+          sha: "def456",
+          size: 54321,
+          downloadUrl: "https://raw.githubusercontent.com/marshad18/change-flow/main/sample-documents/equipment-maps/SafetyMap-EOLA3A.pdf",
+          folder: "equipment-maps",
+          mimeType: "application/pdf",
+        },
+      ]),
+      downloadGitHubFile: vi.fn().mockResolvedValue(Buffer.from("file content")),
+    }));
+  });
+
+  it("returns files from GitHub with alreadyImported flag", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.github.listSampleDocs();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+    result.forEach((f) => {
+      expect(f).toHaveProperty("name");
+      expect(f).toHaveProperty("folder");
+      expect(f).toHaveProperty("downloadUrl");
+      expect(f).toHaveProperty("alreadyImported");
+      expect(typeof f.alreadyImported).toBe("boolean");
+    });
+  });
+});
+
+describe("github.importFiles", () => {
+  it("imports selected files and returns success count", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.github.importFiles({
+      files: [
+        {
+          name: "LubeMap-EOLA3A.xlsx",
+          path: "sample-documents/equipment-maps/LubeMap-EOLA3A.xlsx",
+          downloadUrl: "https://raw.githubusercontent.com/marshad18/change-flow/main/sample-documents/equipment-maps/LubeMap-EOLA3A.xlsx",
+          folder: "equipment-maps",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          size: 12345,
+        },
+      ],
+    });
+    expect(result).toHaveProperty("imported");
+    expect(result).toHaveProperty("failed");
+    expect(result).toHaveProperty("results");
+    expect(Array.isArray(result.results)).toBe(true);
+  });
+
+  it("returns empty results for empty file list", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.github.importFiles({ files: [] });
+    expect(result.imported).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.results).toHaveLength(0);
+  });
+});

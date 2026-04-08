@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
+import { listGitHubSampleDocs, downloadGitHubFile } from "./github";
 import {
   createChangeEvent, listChangeEvents, getChangeEventById, updateChangeEventStatus,
   createChangeAsset, getChangeAssetsByEventId,
@@ -179,6 +180,81 @@ export const appRouter = router({
       const { url } = await storagePut(fileKey, buffer, input.mimeType);
       await createDocument({ name: input.name, code: input.code, category: input.category, owner: input.owner, fileUrl: url, fileKey, fileName: input.fileName, mimeType: input.mimeType, uploadedBy: ctx.user.id });
       return listDocuments();
+    }),
+  }),
+
+  github: router({
+    // List all files available in the repo's sample-documents folder
+    listSampleDocs: protectedProcedure.query(async () => {
+      const files = await listGitHubSampleDocs();
+      // Get existing docs to mark already-imported ones
+      const existing = await listDocuments();
+      const existingNames = new Set(existing.map(d => d.fileName));
+      return files.map(f => ({ ...f, alreadyImported: existingNames.has(f.name) }));
+    }),
+
+    // Import selected files from GitHub into the Document Library
+    importFiles: protectedProcedure.input(z.object({
+      files: z.array(z.object({
+        name: z.string(),
+        path: z.string(),
+        downloadUrl: z.string(),
+        folder: z.string(),
+        mimeType: z.string(),
+        size: z.number(),
+      })),
+    })).mutation(async ({ input, ctx }) => {
+      const results: { name: string; success: boolean; error?: string }[] = [];
+
+      for (const file of input.files) {
+        try {
+          // Download from GitHub
+          const buffer = await downloadGitHubFile(file.downloadUrl);
+
+          // Upload to S3
+          const fileKey = `documents/${randomSuffix()}-${file.name}`;
+          const { url } = await storagePut(fileKey, buffer, file.mimeType);
+
+          // Infer document metadata from folder and filename
+          const folderCategoryMap: Record<string, "Operator" | "Engineering" | "Safety" | "Operations" | "Maintenance"> = {
+            "equipment-maps": "Engineering",
+            "packaging": "Operations",
+            "safety": "Safety",
+            "maintenance": "Maintenance",
+            "operator": "Operator",
+          };
+          const category = folderCategoryMap[file.folder.toLowerCase()] ?? "Operations";
+
+          // Clean up display name from filename
+          const displayName = file.name
+            .replace(/\.[^.]+$/, "") // remove extension
+            .replace(/[-_]/g, " ")   // replace dashes/underscores
+            .replace(/,/g, " —")     // replace commas
+            .trim();
+
+          // Extract code if filename starts with a code pattern like FHC-PKG-001
+          const codeMatch = file.name.match(/^([A-Z]{2,}-[A-Z]{2,}-\d{3})/i);
+          const code = codeMatch ? codeMatch[1].toUpperCase() : undefined;
+
+          await createDocument({
+            name: displayName,
+            code,
+            category,
+            owner: undefined,
+            fileUrl: url,
+            fileKey,
+            fileName: file.name,
+            mimeType: file.mimeType,
+            uploadedBy: ctx.user.id,
+          });
+
+          results.push({ name: file.name, success: true });
+        } catch (err) {
+          results.push({ name: file.name, success: false, error: String(err) });
+        }
+      }
+
+      return { results, imported: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length };
     }),
   }),
 

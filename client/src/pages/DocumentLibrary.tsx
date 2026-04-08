@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   Upload, FileText, Loader2, X, Plus, Eye,
-  BookOpen, Search,
+  BookOpen, Search, Github, CheckSquare, Square,
+  FolderOpen, Check, AlertCircle, Download,
 } from "lucide-react";
 
 const CATEGORIES = ["Operator", "Engineering", "Safety", "Operations", "Maintenance"] as const;
@@ -18,6 +19,14 @@ const CATEGORY_COLORS: Record<Category, string> = {
   Safety: "bg-red-500/15 text-red-400 border-red-500/30",
   Operations: "bg-amber-500/15 text-amber-400 border-amber-500/30",
   Maintenance: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+};
+
+const FOLDER_COLORS: Record<string, string> = {
+  "equipment-maps": "bg-violet-500/15 text-violet-400 border-violet-500/30",
+  "packaging": "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  "safety": "bg-red-500/15 text-red-400 border-red-500/30",
+  "maintenance": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  "operator": "bg-blue-500/15 text-blue-400 border-blue-500/30",
 };
 
 const SUGGESTED_DOCS = [
@@ -38,10 +47,30 @@ const SUGGESTED_DOCS = [
   { code: "PM Plan", name: "Preventative Maintenance Plan", category: "Maintenance" as Category },
 ];
 
+interface GitHubFileItem {
+  name: string;
+  path: string;
+  sha: string;
+  size: number;
+  downloadUrl: string;
+  folder: string;
+  mimeType: string;
+  alreadyImported: boolean;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function DocumentLibrary() {
   const [showUpload, setShowUpload] = useState(false);
+  const [showGitHubImport, setShowGitHubImport] = useState(false);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("All");
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
 
   // Upload form state
   const [docName, setDocName] = useState("");
@@ -54,6 +83,11 @@ export default function DocumentLibrary() {
 
   const { data: documents, isLoading, refetch } = trpc.documents.list.useQuery();
   const uploadMutation = trpc.documents.upload.useMutation();
+  const importMutation = trpc.github.importFiles.useMutation();
+
+  // Only fetch GitHub files when the modal is open
+  const { data: githubFiles, isLoading: ghLoading, error: ghError, refetch: refetchGh } =
+    trpc.github.listSampleDocs.useQuery(undefined, { enabled: showGitHubImport });
 
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -79,7 +113,7 @@ export default function DocumentLibrary() {
       await refetch();
       toast.success("Document uploaded successfully!");
       setDocName(""); setDocCode(""); setDocOwner(""); setSelectedFile(null); setShowUpload(false);
-    } catch (err) {
+    } catch {
       toast.error("Upload failed. Please try again.");
     } finally {
       setUploading(false);
@@ -92,6 +126,72 @@ export default function DocumentLibrary() {
     setTimeout(() => fileInputRef.current?.click(), 100);
   };
 
+  // Group GitHub files by folder
+  const githubByFolder = (githubFiles ?? []).reduce<Record<string, GitHubFileItem[]>>((acc, f) => {
+    if (!acc[f.folder]) acc[f.folder] = [];
+    acc[f.folder].push(f);
+    return acc;
+  }, {});
+
+  const allSelectablePaths = (githubFiles ?? []).filter(f => !f.alreadyImported).map(f => f.path);
+  const allSelected = allSelectablePaths.length > 0 && allSelectablePaths.every(p => selectedPaths.has(p));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedPaths(new Set());
+    } else {
+      setSelectedPaths(new Set(allSelectablePaths));
+    }
+  };
+
+  const toggleFile = (path: string) => {
+    setSelectedPaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const toggleFolder = (folder: string) => {
+    const folderFiles = (githubByFolder[folder] ?? []).filter(f => !f.alreadyImported).map(f => f.path);
+    const allFolderSelected = folderFiles.every(p => selectedPaths.has(p));
+    setSelectedPaths(prev => {
+      const next = new Set(prev);
+      if (allFolderSelected) {
+        folderFiles.forEach(p => next.delete(p));
+      } else {
+        folderFiles.forEach(p => next.add(p));
+      }
+      return next;
+    });
+  };
+
+  const handleImport = async () => {
+    if (selectedPaths.size === 0) {
+      toast.error("Please select at least one file to import.");
+      return;
+    }
+    const filesToImport = (githubFiles ?? []).filter(f => selectedPaths.has(f.path));
+    setImporting(true);
+    try {
+      const result = await importMutation.mutateAsync({ files: filesToImport });
+      await refetch();
+      await refetchGh();
+      setSelectedPaths(new Set());
+      if (result.failed > 0) {
+        toast.warning(`Imported ${result.imported} documents. ${result.failed} failed.`);
+      } else {
+        toast.success(`Successfully imported ${result.imported} document${result.imported !== 1 ? "s" : ""} from GitHub!`);
+      }
+      if (result.imported > 0) setShowGitHubImport(false);
+    } catch {
+      toast.error("Import failed. Please try again.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filtered = (documents ?? []).filter((d) => {
     const matchSearch = !search || d.name.toLowerCase().includes(search.toLowerCase()) || (d.code ?? "").toLowerCase().includes(search.toLowerCase());
     const matchCat = filterCategory === "All" || d.category === filterCategory;
@@ -102,7 +202,8 @@ export default function DocumentLibrary() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
@@ -110,16 +211,165 @@ export default function DocumentLibrary() {
             Document Library
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Upload your plant documents. The AI uses these to identify what needs updating.
+            Upload your plant documents. The AI uses these to identify what needs updating when a change is made.
           </p>
         </div>
-        <Button onClick={() => setShowUpload(!showUpload)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Upload Document
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => { setShowGitHubImport(!showGitHubImport); setShowUpload(false); }}
+            className="gap-2 border-border"
+          >
+            <Github className="h-4 w-4" />
+            Import from GitHub
+          </Button>
+          <Button onClick={() => { setShowUpload(!showUpload); setShowGitHubImport(false); }} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Upload Document
+          </Button>
+        </div>
       </div>
 
-      {/* Upload Panel */}
+      {/* ── GitHub Import Panel ── */}
+      {showGitHubImport && (
+        <div className="bg-card border border-primary/30 rounded-xl overflow-hidden">
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-primary/5">
+            <div className="flex items-center gap-3">
+              <Github className="h-5 w-5 text-primary" />
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Import from GitHub</h2>
+                <p className="text-xs text-muted-foreground">marshad18/change-flow · sample-documents/</p>
+              </div>
+            </div>
+            <button onClick={() => setShowGitHubImport(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Loading state */}
+          {ghLoading && (
+            <div className="flex items-center justify-center py-16 gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Reading repository…</span>
+            </div>
+          )}
+
+          {/* Error state */}
+          {ghError && (
+            <div className="flex items-center gap-3 p-6 text-red-400">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium">Could not read GitHub repository</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{ghError.message}</p>
+              </div>
+            </div>
+          )}
+
+          {/* File list */}
+          {!ghLoading && !ghError && githubFiles && (
+            <>
+              {/* Select all + count */}
+              <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-secondary/20">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors"
+                >
+                  {allSelected
+                    ? <CheckSquare className="h-4 w-4 text-primary" />
+                    : <Square className="h-4 w-4 text-muted-foreground" />}
+                  Select all ({allSelectablePaths.length} available)
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  {selectedPaths.size} selected · {githubFiles.filter(f => f.alreadyImported).length} already imported
+                </span>
+              </div>
+
+              {/* Files grouped by folder */}
+              <div className="divide-y divide-border max-h-[420px] overflow-y-auto">
+                {Object.entries(githubByFolder).map(([folder, files]) => {
+                  const folderSelectablePaths = files.filter(f => !f.alreadyImported).map(f => f.path);
+                  const folderAllSelected = folderSelectablePaths.length > 0 && folderSelectablePaths.every(p => selectedPaths.has(p));
+                  const folderSomeSelected = folderSelectablePaths.some(p => selectedPaths.has(p));
+                  const folderColor = FOLDER_COLORS[folder.toLowerCase()] ?? "bg-muted text-muted-foreground border-border";
+
+                  return (
+                    <div key={folder}>
+                      {/* Folder header */}
+                      <div className="flex items-center gap-3 px-6 py-2.5 bg-secondary/10 sticky top-0">
+                        <button
+                          onClick={() => toggleFolder(folder)}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          disabled={folderSelectablePaths.length === 0}
+                        >
+                          {folderAllSelected
+                            ? <CheckSquare className="h-4 w-4 text-primary" />
+                            : folderSomeSelected
+                              ? <CheckSquare className="h-4 w-4 text-primary/50" />
+                              : <Square className="h-4 w-4" />}
+                        </button>
+                        <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${folderColor}`}>
+                          {folder}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{files.length} files</span>
+                      </div>
+
+                      {/* Files in folder */}
+                      {files.map((file) => (
+                        <div
+                          key={file.path}
+                          className={`flex items-center gap-3 px-6 py-3 hover:bg-accent/10 transition-colors ${file.alreadyImported ? "opacity-50" : ""}`}
+                        >
+                          <button
+                            onClick={() => !file.alreadyImported && toggleFile(file.path)}
+                            disabled={file.alreadyImported}
+                            className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                          >
+                            {file.alreadyImported
+                              ? <Check className="h-4 w-4 text-emerald-400" />
+                              : selectedPaths.has(file.path)
+                                ? <CheckSquare className="h-4 w-4 text-primary" />
+                                : <Square className="h-4 w-4" />}
+                          </button>
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-foreground truncate">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
+                          </div>
+                          {file.alreadyImported && (
+                            <span className="text-xs text-emerald-400 shrink-0">Imported</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Import action bar */}
+              <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-secondary/10">
+                <p className="text-xs text-muted-foreground">
+                  {selectedPaths.size > 0
+                    ? `${selectedPaths.size} file${selectedPaths.size !== 1 ? "s" : ""} selected for import`
+                    : "Select files above to import them into the Document Library"}
+                </p>
+                <Button
+                  onClick={handleImport}
+                  disabled={selectedPaths.size === 0 || importing}
+                  className="gap-2"
+                >
+                  {importing
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Importing…</>
+                    : <><Download className="h-4 w-4" /> Import {selectedPaths.size > 0 ? `${selectedPaths.size} ` : ""}Selected</>}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Manual Upload Panel ── */}
       {showUpload && (
         <div className="bg-card border border-primary/30 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -173,7 +423,7 @@ export default function DocumentLibrary() {
         </div>
       )}
 
-      {/* Suggested Documents */}
+      {/* ── Suggested Documents ── */}
       {(documents ?? []).length < SUGGESTED_DOCS.length && (
         <div>
           <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -197,7 +447,7 @@ export default function DocumentLibrary() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* ── Filters ── */}
       {(documents ?? []).length > 0 && (
         <div className="flex gap-3 flex-wrap items-center">
           <div className="relative flex-1 max-w-xs">
@@ -218,7 +468,7 @@ export default function DocumentLibrary() {
         </div>
       )}
 
-      {/* Documents Grid */}
+      {/* ── Documents Grid ── */}
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -239,7 +489,7 @@ export default function DocumentLibrary() {
                       {doc.code}
                     </span>
                   )}
-                  <span className="font-semibold text-sm text-foreground">{doc.name}</span>
+                  <span className="text-sm font-medium text-foreground">{doc.name}</span>
                 </div>
                 {doc.fileUrl && (
                   <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0">
@@ -252,7 +502,7 @@ export default function DocumentLibrary() {
                   <span className={`px-2 py-0.5 rounded border ${CATEGORY_COLORS[doc.category as Category] ?? "bg-muted border-border"}`}>{doc.category}</span>
                 )}
                 {doc.owner && <span>Owner: {doc.owner}</span>}
-                <span className="text-foreground/40">{doc.fileName}</span>
+                <span className="text-foreground/40 truncate max-w-[180px]">{doc.fileName}</span>
               </div>
             </div>
           ))}
@@ -262,11 +512,16 @@ export default function DocumentLibrary() {
           <BookOpen className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold text-foreground mb-2">No documents yet</h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-            Upload your plant documents — CIL, PM Plan, Safety Map, and others — to enable AI impact analysis.
+            Import your documents from GitHub or upload them manually to enable AI impact analysis.
           </p>
-          <Button onClick={() => setShowUpload(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Upload First Document
-          </Button>
+          <div className="flex gap-3 justify-center">
+            <Button variant="outline" onClick={() => setShowGitHubImport(true)} className="gap-2">
+              <Github className="h-4 w-4" /> Import from GitHub
+            </Button>
+            <Button onClick={() => setShowUpload(true)} className="gap-2">
+              <Upload className="h-4 w-4" /> Upload Document
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground text-sm">
