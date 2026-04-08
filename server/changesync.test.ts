@@ -204,6 +204,76 @@ describe("drafts.updateContent", () => {
   });
 });
 
+describe("changeEvents.create — new change types", () => {
+  it("creates a part_change event with manual sub-type", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.changeEvents.create({
+      title: "Motor Manual Update",
+      changeType: "part_change",
+      partSubType: "manual",
+      textNotes: "New motor manual uploaded",
+    });
+    expect(result).toBeDefined();
+    expect(result?.title).toBe("Motor Swap"); // mocked listChangeEvents returns Motor Swap
+  });
+
+  it("creates a weight_change event", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.changeEvents.create({
+      title: "Detergent Weight Change 500g → 450g",
+      changeType: "weight_change",
+      textNotes: "Reformulation reduced fill weight",
+    });
+    expect(result).toBeDefined();
+  });
+
+  it("creates a price_change event", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.changeEvents.create({
+      title: "SKU-001 Price Update",
+      changeType: "price_change",
+      textNotes: "Price increase due to raw material costs",
+    });
+    expect(result).toBeDefined();
+  });
+
+  it("rejects invalid change type", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    await expect(
+      caller.changeEvents.create({
+        title: "Bad type",
+        changeType: "invalid_type" as "hardware",
+      })
+    ).rejects.toThrow();
+  });
+});
+
+describe("changeEvents.uploadAsset — new asset types", () => {
+  it("uploads a manual_old asset", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.changeEvents.uploadAsset({
+      changeEventId: 1,
+      assetType: "manual_old",
+      fileName: "old-manual.pdf",
+      mimeType: "application/pdf",
+      fileDataBase64: Buffer.from("test").toString("base64"),
+    });
+    expect(result).toHaveProperty("url");
+  });
+
+  it("uploads a manual_new asset", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.changeEvents.uploadAsset({
+      changeEventId: 1,
+      assetType: "manual_new",
+      fileName: "new-manual.pdf",
+      mimeType: "application/pdf",
+      fileDataBase64: Buffer.from("test").toString("base64"),
+    });
+    expect(result).toHaveProperty("url");
+  });
+});
+
 describe("auth.logout", () => {
   it("clears the session cookie and reports success", async () => {
     const ctx = createCtx();

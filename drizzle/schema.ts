@@ -47,7 +47,12 @@ export const changeEvents = mysqlTable("changeEvents", {
     "regulatory",
     "safety",
     "maintenance",
+    "part_change",
+    "weight_change",
+    "price_change",
   ]).notNull(),
+  // For part_change: 'manual' or 'drawing'
+  partSubType: mysqlEnum("partSubType", ["manual", "drawing"]),
   changeScope: mysqlEnum("changeScope", [
     "substitution",
     "upgrade",
@@ -87,6 +92,8 @@ export const changeAssets = mysqlTable("changeAssets", {
     "photo_new",
     "sds",
     "other",
+    "manual_old",
+    "manual_new",
   ]).notNull(),
   fileUrl: text("fileUrl").notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
@@ -171,12 +178,14 @@ export const documentDrafts = mysqlTable("documentDrafts", {
   status: mysqlEnum("status", [
     "generating",
     "pending_review",
+    "routed_for_approval",
     "approved",
     "revision_requested",
     "rejected",
   ])
     .default("generating")
     .notNull(),
+  approverName: varchar("approverName", { length: 255 }),
   approvedBy: int("approvedBy"),
   approvedAt: timestamp("approvedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

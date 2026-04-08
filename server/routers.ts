@@ -21,6 +21,9 @@ const CHANGE_TYPE_LABELS: Record<string, string> = {
   material: "Raw Material / Ingredient Change", packaging: "Packaging / SKU Change",
   supplier: "Supplier / Vendor Change", regulatory: "Regulatory / Compliance Change",
   safety: "Safety Incident / Near-Miss", maintenance: "Maintenance Finding / Condition-Based Change",
+  part_change: "Part Change (Manual or Drawing)",
+  weight_change: "Weight Change",
+  price_change: "Price Change",
 };
 
 export const appRouter = router({
@@ -52,7 +55,8 @@ export const appRouter = router({
 
     create: protectedProcedure.input(z.object({
       title: z.string().min(1),
-      changeType: z.enum(["hardware","process","material","packaging","supplier","regulatory","safety","maintenance"]),
+      changeType: z.enum(["hardware","process","material","packaging","supplier","regulatory","safety","maintenance","part_change","weight_change","price_change"]),
+      partSubType: z.enum(["manual","drawing"]).optional(),
       changeScope: z.enum(["substitution","upgrade","new_introduction"]).optional(),
       affectedEquipment: z.string().optional(),
       affectedSku: z.string().optional(),
@@ -65,7 +69,7 @@ export const appRouter = router({
 
     uploadAsset: protectedProcedure.input(z.object({
       changeEventId: z.number(),
-      assetType: z.enum(["drawing_old","drawing_new","photo_old","photo_new","sds","other"]),
+      assetType: z.enum(["drawing_old","drawing_new","photo_old","photo_new","sds","other","manual_old","manual_new"]),
       fileName: z.string(), mimeType: z.string(), fileDataBase64: z.string(),
     })).mutation(async ({ input }) => {
       const buffer = Buffer.from(input.fileDataBase64, "base64");
@@ -102,7 +106,16 @@ export const appRouter = router({
       const skuSummary = skus.length > 0 ? skus.map(s => `${s.fieldName}: ${s.oldValue ?? "N/A"} → ${s.newValue ?? "N/A"}${s.unit ? " "+s.unit : ""}`).join("; ") : "None";
       const assetSummary = assets.length > 0 ? assets.map(a => `${a.assetType}: ${a.fileName}`).join(", ") : "None";
       const docList = allDocs.map(d => `ID ${d.id}: ${d.code ? "["+d.code+"] " : ""}${d.name} (Category: ${d.category ?? "Unknown"}, Owner: ${d.owner ?? "Unknown"})`).join("\n");
-      const prompt = `You are an expert manufacturing engineer analyzing the impact of an engineering change on plant documentation.\n\nCHANGE EVENT:\n- Title: ${event.title}\n- Change Type: ${changeTypeLabel}\n- Change Scope: ${event.changeScope ?? "substitution"}\n- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}\n- Affected SKU: ${event.affectedSku ?? "Not specified"}\n- Text Notes: ${event.textNotes ?? "None"}\n- Parameter Changes: ${skuSummary}\n- Uploaded Assets: ${assetSummary}\n\nDOCUMENTS IN LIBRARY:\n${docList}\n\nTASK:\nFor each document listed above, determine whether it would be impacted by this engineering change. Return a JSON array where each element has:\n- documentId: number\n- impacted: boolean\n- confidence: "high" | "medium" | "low"\n- reasoning: string (1-2 sentences)\n- impactedSections: string (specific sections if impacted, else empty string)\n\nBe thorough and err on the side of inclusion.`;
+      // Build change-type-specific context
+      let changeContext = "";
+      if (event.changeType === "part_change") {
+        changeContext = `This is a Part Change. The sub-type is: ${event.partSubType ?? "unspecified"} (manual or drawing replacement). Old and new ${event.partSubType ?? "documents"} have been uploaded.`;
+      } else if (event.changeType === "weight_change") {
+        changeContext = `This is a Weight Change. The product weight has changed. Check skuChanges for old/new weight and SKU code values.`;
+      } else if (event.changeType === "price_change") {
+        changeContext = `This is a Price Change. The product price has changed. Check skuChanges for old/new price and SKU code values.`;
+      }
+      const prompt = `You are an expert manufacturing engineer analyzing the impact of an engineering change on plant documentation.\n\nCHANGE EVENT:\n- Title: ${event.title}\n- Change Type: ${changeTypeLabel}\n- Change Context: ${changeContext}\n- Change Scope: ${event.changeScope ?? "substitution"}\n- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}\n- Affected SKU: ${event.affectedSku ?? "Not specified"}\n- Text Notes: ${event.textNotes ?? "None"}\n- Parameter Changes: ${skuSummary}\n- Uploaded Assets: ${assetSummary}\n\nDOCUMENTS IN LIBRARY:\n${docList}\n\nTASK:\nFor each document listed above, determine whether it would be impacted by this engineering change. Return a JSON array where each element has:\n- documentId: number\n- impacted: boolean\n- confidence: "high" | "medium" | "low"\n- reasoning: string (1-2 sentences explaining why this document is or is not impacted)\n- impactedSections: string (specific sections/fields to update if impacted, else empty string)\n\nBe thorough and err on the side of inclusion. For weight changes, focus on packaging specs, product data sheets, and labelling docs. For price changes, focus on pricing lists, SKU masters, and commercial docs. For part changes, focus on equipment manuals, maintenance plans, and safety docs.`;
       const response = await invokeLLM({
         messages: [
           { role: "system", content: "You are an expert manufacturing engineer. Always respond with valid JSON only." },
@@ -130,11 +143,19 @@ export const appRouter = router({
       const impactedAnalyses = analyses.filter(a => a.impacted && a.status !== "dismissed");
       const changeTypeLabel = CHANGE_TYPE_LABELS[event.changeType] || event.changeType;
       const skuSummary = skus.length > 0 ? skus.map(s => `${s.fieldName}: ${s.oldValue ?? "N/A"} → ${s.newValue ?? "N/A"}${s.unit ? " "+s.unit : ""}`).join("; ") : "None";
+      let changeContext = "";
+      if (event.changeType === "part_change") {
+        changeContext = `Part Change — sub-type: ${event.partSubType ?? "unspecified"}. Old and new ${event.partSubType ?? "documents"} uploaded.`;
+      } else if (event.changeType === "weight_change") {
+        changeContext = `Weight Change. Parameter changes: ${skuSummary}.`;
+      } else if (event.changeType === "price_change") {
+        changeContext = `Price Change. Parameter changes: ${skuSummary}.`;
+      }
       let draftsCreated = 0;
       for (const analysis of impactedAnalyses) {
         const doc = await getDocumentById(analysis.documentId);
         if (!doc) continue;
-        const draftPrompt = `You are an expert manufacturing documentation writer. Generate updated content for a manufacturing document based on an engineering change.\n\nCHANGE EVENT:\n- Title: ${event.title}\n- Change Type: ${changeTypeLabel}\n- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}\n- Affected SKU: ${event.affectedSku ?? "Not specified"}\n- Text Notes: ${event.textNotes ?? "None"}\n- Parameter Changes: ${skuSummary}\n\nDOCUMENT TO UPDATE:\n- Name: ${doc.name}\n- Code: ${doc.code ?? "N/A"}\n- Category: ${doc.category ?? "Unknown"}\n- Owner: ${doc.owner ?? "Unknown"}\n\nSECTIONS TO UPDATE:\n${analysis.impactedSections ?? "Review all sections"}\n\nIMPACT REASONING:\n${analysis.reasoning}\n\nGenerate a clear, professional summary of the specific changes that need to be made to this document. Format your response as:\n\n## Changes Required for ${doc.name}\n\n### Summary\n[Brief overview]\n\n### Specific Updates Required\n[Detailed list of changes by section]\n\n### New Content / Values\n[New values, procedures, or content]\n\n### Verification Checklist\n[Items the approver should verify]`;
+        const draftPrompt = `You are an expert manufacturing documentation writer. Generate updated content for a manufacturing document based on an engineering change.\n\nCHANGE EVENT:\n- Title: ${event.title}\n- Change Type: ${changeTypeLabel}\n- Change Context: ${changeContext || "Standard engineering change"}\n- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}\n- Affected SKU: ${event.affectedSku ?? "Not specified"}\n- Text Notes: ${event.textNotes ?? "None"}\n- Parameter Changes: ${skuSummary}\n\nDOCUMENT TO UPDATE:\n- Name: ${doc.name}\n- Code: ${doc.code ?? "N/A"}\n- Category: ${doc.category ?? "Unknown"}\n- Owner: ${doc.owner ?? "Unknown"}\n\nSECTIONS TO UPDATE:\n${analysis.impactedSections ?? "Review all sections"}\n\nIMPACT REASONING:\n${analysis.reasoning}\n\nGenerate a clear, professional summary of the specific changes that need to be made to this document. Format your response as:\n\n## Changes Required for ${doc.name}\n\n### Summary\n[Brief overview of what changed and why this document needs updating]\n\n### Specific Updates Required\n[Detailed list of changes by section — be specific about what old values to replace with new values]\n\n### New Content / Values\n[New values, procedures, or content to insert]\n\n### Verification Checklist\n[Items the document owner/approver should verify before approving]`;
         const draftResponse = await invokeLLM({ messages: [{ role: "system", content: "You are an expert manufacturing documentation writer." }, { role: "user", content: draftPrompt }] });
         const draftContent = String(draftResponse.choices[0]?.message?.content ?? "Draft generation failed.");
         await createDocumentDraft({ impactAnalysisId: analysis.id, changeEventId: input.changeEventId, documentId: analysis.documentId, draftContent, status: "pending_review" });
@@ -181,6 +202,15 @@ export const appRouter = router({
       .mutation(async ({ input }) => { await updateDraftStatus(input.id, "rejected", input.reviewNotes); return { success: true }; }),
     updateContent: protectedProcedure.input(z.object({ id: z.number(), content: z.string() }))
       .mutation(async ({ input }) => { await updateDraftContent(input.id, input.content); return { success: true }; }),
+    routeForApproval: protectedProcedure.input(z.object({
+      id: z.number(),
+      approverName: z.string().optional(),
+      reviewNotes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const notes = [input.approverName ? `Routed to: ${input.approverName}` : "", input.reviewNotes ?? ""].filter(Boolean).join(" — ") || undefined;
+      await updateDraftStatus(input.id, "routed_for_approval", notes, undefined, input.approverName);
+      return { success: true };
+    }),
   }),
 });
 

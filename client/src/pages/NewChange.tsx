@@ -7,84 +7,76 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
-  ArrowLeft, ArrowRight, Upload, X, Plus, Wrench, Settings, FlaskConical,
-  Package, Truck, Scale, ShieldAlert, Hammer, CheckCircle2, Loader2,
+  ArrowLeft, ArrowRight, Upload, X, CheckCircle2, Loader2,
+  FileText, Weight, DollarSign, ChevronDown,
 } from "lucide-react";
 
-const CHANGE_TYPES = [
-  { id: "hardware", label: "Hardware / Component", icon: Wrench, desc: "Physical part replaced with different specification" },
-  { id: "process", label: "Process / Method", icon: Settings, desc: "How something is done changes without hardware change" },
-  { id: "material", label: "Raw Material / Ingredient", icon: FlaskConical, desc: "Ingredient or raw material changed" },
-  { id: "packaging", label: "Packaging / SKU", icon: Package, desc: "Wrapper, format, grammage, or price code changed" },
-  { id: "supplier", label: "Supplier / Vendor", icon: Truck, desc: "Same part now sourced from different supplier" },
-  { id: "regulatory", label: "Regulatory / Compliance", icon: Scale, desc: "External regulation or standard changed" },
-  { id: "safety", label: "Safety Incident / Near-Miss", icon: ShieldAlert, desc: "Incident revealed documentation gap" },
-  { id: "maintenance", label: "Maintenance Finding", icon: Hammer, desc: "Inspection revealed documents need updating" },
-];
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const CHANGE_SCOPES = [
-  { id: "substitution", label: "Like-for-like substitution", desc: "Same spec, different brand/supplier" },
-  { id: "upgrade", label: "Performance upgrade", desc: "Different spec, improved capability" },
-  { id: "new_introduction", label: "New introduction", desc: "Entirely new component or SKU" },
-];
-
-const ASSET_TYPES = [
-  { id: "drawing_old", label: "Drawing — Old Part" },
-  { id: "drawing_new", label: "Drawing — New Part" },
-  { id: "photo_old", label: "Photo — Old Part/Packaging" },
-  { id: "photo_new", label: "Photo — New Part/Packaging" },
-  { id: "sds", label: "Safety Data Sheet (SDS)" },
-  { id: "other", label: "Other Supporting Document" },
-];
-
-type SkuRow = { fieldName: string; oldValue: string; newValue: string; unit: string };
+type ChangeType = "part_change" | "weight_change" | "price_change";
+type PartSubType = "manual" | "drawing";
 type AssetUpload = { assetType: string; file: File; preview?: string };
+
+// ─── Change type config ───────────────────────────────────────────────────────
+
+const CHANGE_TYPE_OPTIONS = [
+  {
+    id: "part_change" as ChangeType,
+    label: "Part Change",
+    icon: FileText,
+    desc: "A part has been replaced — upload the old and new manual or engineering drawing",
+    color: "text-blue-400",
+    borderColor: "border-blue-500/30",
+    bgColor: "bg-blue-500/10",
+  },
+  {
+    id: "weight_change" as ChangeType,
+    label: "Weight Change",
+    icon: Weight,
+    desc: "The product weight has changed — enter old and new weight with SKU codes",
+    color: "text-amber-400",
+    borderColor: "border-amber-500/30",
+    bgColor: "bg-amber-500/10",
+  },
+  {
+    id: "price_change" as ChangeType,
+    label: "Price Change",
+    icon: DollarSign,
+    desc: "The product price has changed — enter old and new price with SKU codes",
+    color: "text-emerald-400",
+    borderColor: "border-emerald-500/30",
+    bgColor: "bg-emerald-500/10",
+  },
+];
 
 export default function NewChange() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(1);
 
-  // Form state
+  // Step 1 — change type selection
+  const [changeType, setChangeType] = useState<ChangeType | "">("");
+  const [partSubType, setPartSubType] = useState<PartSubType>("manual");
   const [title, setTitle] = useState("");
-  const [changeType, setChangeType] = useState("");
-  const [changeScope, setChangeScope] = useState("substitution");
-  const [affectedEquipment, setAffectedEquipment] = useState("");
-  const [affectedSku, setAffectedSku] = useState("");
   const [textNotes, setTextNotes] = useState("");
-  const [skuRows, setSkuRows] = useState<SkuRow[]>([{ fieldName: "", oldValue: "", newValue: "", unit: "" }]);
-  const [assets, setAssets] = useState<AssetUpload[]>([]);
-  const [createdEventId, setCreatedEventId] = useState<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingAssetType, setPendingAssetType] = useState("drawing_old");
+
+  // Part change assets
+  const [oldFile, setOldFile] = useState<File | null>(null);
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const oldFileRef = useRef<HTMLInputElement>(null);
+  const newFileRef = useRef<HTMLInputElement>(null);
+
+  // Weight / Price change fields
+  const [oldValue, setOldValue] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [oldSku, setOldSku] = useState("");
+  const [newSku, setNewSku] = useState("");
+
+  const [submitting, setSubmitting] = useState(false);
 
   const createMutation = trpc.changeEvents.create.useMutation();
   const uploadAssetMutation = trpc.changeEvents.uploadAsset.useMutation();
   const addSkuMutation = trpc.changeEvents.addSkuChange.useMutation();
   const utils = trpc.useUtils();
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
-    setAssets((prev) => [...prev, { assetType: pendingAssetType, file, preview }]);
-    e.target.value = "";
-  };
-
-  const removeAsset = (idx: number) => {
-    setAssets((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const addSkuRow = () => {
-    setSkuRows((prev) => [...prev, { fieldName: "", oldValue: "", newValue: "", unit: "" }]);
-  };
-
-  const updateSkuRow = (idx: number, field: keyof SkuRow, value: string) => {
-    setSkuRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
-  };
-
-  const removeSkuRow = (idx: number) => {
-    setSkuRows((prev) => prev.filter((_, i) => i !== idx));
-  };
 
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -94,54 +86,68 @@ export default function NewChange() {
       reader.readAsDataURL(file);
     });
 
-  const [submitting, setSubmitting] = useState(false);
+  const selectedType = CHANGE_TYPE_OPTIONS.find((t) => t.id === changeType);
+
+  const canProceedStep1 =
+    changeType !== "" &&
+    title.trim() !== "" &&
+    (changeType !== "part_change" || (oldFile !== null && newFile !== null)) &&
+    (changeType !== "weight_change" || (oldValue.trim() && newValue.trim() && oldSku.trim() && newSku.trim())) &&
+    (changeType !== "price_change" || (oldValue.trim() && newValue.trim() && oldSku.trim() && newSku.trim()));
 
   const handleSubmit = async () => {
-    if (!title || !changeType) {
-      toast.error("Please fill in the title and change type.");
+    if (!changeType || !title.trim()) {
+      toast.error("Please fill in all required fields.");
       return;
     }
     setSubmitting(true);
     try {
+      // Build a descriptive title if not set
       const event = await createMutation.mutateAsync({
         title,
-        changeType: changeType as "hardware" | "process" | "material" | "packaging" | "supplier" | "regulatory" | "safety" | "maintenance",
-        changeScope: changeScope as "substitution" | "upgrade" | "new_introduction",
-        affectedEquipment: affectedEquipment || undefined,
-        affectedSku: affectedSku || undefined,
+        changeType,
+        partSubType: changeType === "part_change" ? partSubType : undefined,
         textNotes: textNotes || undefined,
       });
 
       const eventId = event?.id;
       if (!eventId) throw new Error("Failed to create event");
-      setCreatedEventId(eventId);
 
-      // Upload assets
-      for (const asset of assets) {
-        const fileDataBase64 = await fileToBase64(asset.file);
-        await uploadAssetMutation.mutateAsync({
-          changeEventId: eventId,
-          assetType: asset.assetType as "drawing_old" | "drawing_new" | "photo_old" | "photo_new" | "sds" | "other",
-          fileName: asset.file.name,
-          mimeType: asset.file.type,
-          fileDataBase64,
-        });
+      // Upload files for part change
+      if (changeType === "part_change") {
+        if (oldFile) {
+          const oldBase64 = await fileToBase64(oldFile);
+          await uploadAssetMutation.mutateAsync({
+            changeEventId: eventId,
+            assetType: partSubType === "manual" ? "manual_old" : "drawing_old",
+            fileName: oldFile.name,
+            mimeType: oldFile.type,
+            fileDataBase64: oldBase64,
+          });
+        }
+        if (newFile) {
+          const newBase64 = await fileToBase64(newFile);
+          await uploadAssetMutation.mutateAsync({
+            changeEventId: eventId,
+            assetType: partSubType === "manual" ? "manual_new" : "drawing_new",
+            fileName: newFile.name,
+            mimeType: newFile.type,
+            fileDataBase64: newBase64,
+          });
+        }
       }
 
-      // Add SKU changes
-      const validSkuRows = skuRows.filter((r) => r.fieldName.trim());
-      for (const row of validSkuRows) {
-        await addSkuMutation.mutateAsync({
-          changeEventId: eventId,
-          fieldName: row.fieldName,
-          oldValue: row.oldValue || undefined,
-          newValue: row.newValue || undefined,
-          unit: row.unit || undefined,
-        });
+      // Add SKU/parameter rows for weight or price change
+      if (changeType === "weight_change") {
+        await addSkuMutation.mutateAsync({ changeEventId: eventId, fieldName: "Weight", oldValue, newValue, unit: "g" });
+        await addSkuMutation.mutateAsync({ changeEventId: eventId, fieldName: "SKU Code", oldValue: oldSku, newValue: newSku });
+      } else if (changeType === "price_change") {
+        await addSkuMutation.mutateAsync({ changeEventId: eventId, fieldName: "Price", oldValue, newValue, unit: "USD" });
+        await addSkuMutation.mutateAsync({ changeEventId: eventId, fieldName: "SKU Code", oldValue: oldSku, newValue: newSku });
       }
 
       await utils.changeEvents.list.invalidate();
-      toast.success("Change event created successfully!");
+      toast.success("Change event created — running impact analysis…");
       setLocation(`/changes/${eventId}`);
     } catch (err) {
       toast.error("Failed to create change event. Please try again.");
@@ -151,297 +157,431 @@ export default function NewChange() {
     }
   };
 
-  const canProceedStep1 = title.trim() && changeType;
-  const canProceedStep2 = true; // assets are optional
+  const valueLabel = changeType === "weight_change" ? "Weight" : changeType === "price_change" ? "Price" : "";
+  const valuePlaceholder = changeType === "weight_change" ? "e.g., 500g" : "e.g., $4.99";
+  const subTypeLabel = partSubType === "manual" ? "Manual" : "Engineering Drawing";
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
-        <button onClick={() => setLocation("/")} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button
+          onClick={() => setLocation("/")}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
           <h1 className="text-xl font-bold text-foreground">New Change Event</h1>
-          <p className="text-sm text-muted-foreground">Step {step} of 3</p>
+          <p className="text-sm text-muted-foreground">
+            Select the type of change and provide the details
+          </p>
         </div>
       </div>
 
-      {/* Progress */}
-      <div className="flex gap-2 mb-8">
-        {[1, 2, 3].map((s) => (
-          <div
-            key={s}
-            className={`h-1.5 flex-1 rounded-full transition-all ${s <= step ? "bg-primary" : "bg-border"}`}
+      <div className="space-y-8">
+        {/* ── Change Event Title ── */}
+        <div className="space-y-2">
+          <Label htmlFor="title">
+            Change Event Title <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="title"
+            placeholder="e.g., Motor replacement on Detergent Line 3"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="bg-card border-border"
           />
-        ))}
-      </div>
+        </div>
 
-      {/* Step 1 — Change Details */}
-      {step === 1 && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground mb-1">Change Details</h2>
-            <p className="text-sm text-muted-foreground">Describe the engineering change and select its type.</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="title">Change Event Title *</Label>
-            <Input
-              id="title"
-              placeholder="e.g., Motor replacement on Detergent Line 3 — 5.5kW to 7.5kW"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="bg-card border-border"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Change Type *</Label>
-            <div className="grid grid-cols-2 gap-3">
-              {CHANGE_TYPES.map((ct) => (
-                <button
-                  key={ct.id}
-                  onClick={() => setChangeType(ct.id)}
-                  className={`flex items-start gap-3 p-4 rounded-xl border text-left transition-all ${
-                    changeType === ct.id
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-border bg-card hover:border-primary/40 hover:bg-accent/20"
-                  }`}
-                >
-                  <ct.icon className={`h-5 w-5 mt-0.5 shrink-0 ${changeType === ct.id ? "text-primary" : "text-muted-foreground"}`} />
-                  <div>
-                    <p className={`text-sm font-medium leading-tight ${changeType === ct.id ? "text-primary" : "text-foreground"}`}>{ct.label}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{ct.desc}</p>
-                  </div>
-                </button>
+        {/* ── Change Type Dropdown ── */}
+        <div className="space-y-3">
+          <Label>
+            Change Type <span className="text-destructive">*</span>
+          </Label>
+          <div className="relative">
+            <select
+              value={changeType}
+              onChange={(e) => {
+                setChangeType(e.target.value as ChangeType | "");
+                setOldValue("");
+                setNewValue("");
+                setOldSku("");
+                setNewSku("");
+                setOldFile(null);
+                setNewFile(null);
+              }}
+              className="w-full appearance-none bg-card border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 pr-10"
+            >
+              <option value="">Select a change type…</option>
+              {CHANGE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
               ))}
-            </div>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           </div>
 
-          <div className="space-y-2">
-            <Label>Change Scope</Label>
-            <div className="grid grid-cols-3 gap-3">
-              {CHANGE_SCOPES.map((cs) => (
-                <button
-                  key={cs.id}
-                  onClick={() => setChangeScope(cs.id)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    changeScope === cs.id
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-border bg-card hover:border-primary/40"
-                  }`}
-                >
-                  <p className={`text-xs font-semibold ${changeScope === cs.id ? "text-primary" : "text-foreground"}`}>{cs.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{cs.desc}</p>
-                </button>
-              ))}
+          {/* Selected type description */}
+          {selectedType && (
+            <div
+              className={`flex items-start gap-3 p-4 rounded-xl border ${selectedType.borderColor} ${selectedType.bgColor}`}
+            >
+              <selectedType.icon className={`h-5 w-5 mt-0.5 shrink-0 ${selectedType.color}`} />
+              <p className="text-sm text-muted-foreground leading-relaxed">{selectedType.desc}</p>
             </div>
-          </div>
+          )}
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
+        {/* ── PART CHANGE: sub-type + file uploads ── */}
+        {changeType === "part_change" && (
+          <div className="space-y-6">
+            {/* Sub-type selector */}
             <div className="space-y-2">
-              <Label htmlFor="equipment">Affected Equipment</Label>
-              <Input
-                id="equipment"
-                placeholder="e.g., Detergent Line 3 — Filler Motor"
-                value={affectedEquipment}
-                onChange={(e) => setAffectedEquipment(e.target.value)}
-                className="bg-card border-border"
+              <Label>Document Type</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {(["manual", "drawing"] as PartSubType[]).map((sub) => (
+                  <button
+                    key={sub}
+                    onClick={() => {
+                      setPartSubType(sub);
+                      setOldFile(null);
+                      setNewFile(null);
+                    }}
+                    className={`p-4 rounded-xl border text-left transition-all ${
+                      partSubType === sub
+                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                        : "border-border bg-card hover:border-primary/40"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-semibold capitalize ${
+                        partSubType === sub ? "text-primary" : "text-foreground"
+                      }`}
+                    >
+                      {sub === "manual" ? "Manual" : "Engineering Drawing"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {sub === "manual"
+                        ? "Upload old and new equipment manuals (PDF)"
+                        : "Upload old and new engineering drawings (PDF, DWG, image)"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Old file upload */}
+            <div className="space-y-2">
+              <Label>
+                Old {subTypeLabel} <span className="text-destructive">*</span>
+              </Label>
+              {oldFile ? (
+                <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
+                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-foreground flex-1 truncate">{oldFile.name}</span>
+                  <button
+                    onClick={() => setOldFile(null)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => oldFileRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"
+                >
+                  <Upload className="h-4 w-4" />
+                  Click to upload old {subTypeLabel.toLowerCase()}
+                </button>
+              )}
+              <input
+                ref={oldFileRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf,.doc,.docx"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) setOldFile(f);
+                  e.target.value = "";
+                }}
               />
             </div>
+
+            {/* New file upload */}
             <div className="space-y-2">
-              <Label htmlFor="sku">Affected SKU</Label>
-              <Input
-                id="sku"
-                placeholder="e.g., SURF-500G-BLUE"
-                value={affectedSku}
-                onChange={(e) => setAffectedSku(e.target.value)}
-                className="bg-card border-border"
+              <Label>
+                New {subTypeLabel} <span className="text-destructive">*</span>
+              </Label>
+              {newFile ? (
+                <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
+                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-foreground flex-1 truncate">{newFile.name}</span>
+                  <button
+                    onClick={() => setNewFile(null)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => newFileRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"
+                >
+                  <Upload className="h-4 w-4" />
+                  Click to upload new {subTypeLabel.toLowerCase()}
+                </button>
+              )}
+              <input
+                ref={newFileRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf,.doc,.docx"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) setNewFile(f);
+                  e.target.value = "";
+                }}
               />
             </div>
           </div>
+        )}
 
+        {/* ── WEIGHT CHANGE: old/new weight + SKU codes ── */}
+        {changeType === "weight_change" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>
+                  Old Weight <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., 500g"
+                  value={oldValue}
+                  onChange={(e) => setOldValue(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  New Weight <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., 450g"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>
+                  Old SKU Code <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., SKU-001-A"
+                  value={oldSku}
+                  onChange={(e) => setOldSku(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  New SKU Code <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., SKU-001-B"
+                  value={newSku}
+                  onChange={(e) => setNewSku(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+            </div>
+
+            {/* Visual comparison */}
+            {(oldValue || newValue) && (
+              <div className="flex items-center gap-3 p-4 bg-card border border-border rounded-xl">
+                <div className="flex-1 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Old Weight</p>
+                  <p className="text-lg font-bold text-red-400">{oldValue || "—"}</p>
+                  {oldSku && <p className="text-xs text-muted-foreground mt-1">{oldSku}</p>}
+                </div>
+                <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="flex-1 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">New Weight</p>
+                  <p className="text-lg font-bold text-emerald-400">{newValue || "—"}</p>
+                  {newSku && <p className="text-xs text-muted-foreground mt-1">{newSku}</p>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PRICE CHANGE: old/new price + SKU codes ── */}
+        {changeType === "price_change" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>
+                  Old Price <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., $4.99"
+                  value={oldValue}
+                  onChange={(e) => setOldValue(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  New Price <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., $5.49"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>
+                  Old SKU Code <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., SKU-001-A"
+                  value={oldSku}
+                  onChange={(e) => setOldSku(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  New SKU Code <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., SKU-001-B"
+                  value={newSku}
+                  onChange={(e) => setNewSku(e.target.value)}
+                  className="bg-card border-border"
+                />
+              </div>
+            </div>
+
+            {/* Visual comparison */}
+            {(oldValue || newValue) && (
+              <div className="flex items-center gap-3 p-4 bg-card border border-border rounded-xl">
+                <div className="flex-1 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Old Price</p>
+                  <p className="text-lg font-bold text-red-400">{oldValue || "—"}</p>
+                  {oldSku && <p className="text-xs text-muted-foreground mt-1">{oldSku}</p>}
+                </div>
+                <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="flex-1 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">New Price</p>
+                  <p className="text-lg font-bold text-emerald-400">{newValue || "—"}</p>
+                  {newSku && <p className="text-xs text-muted-foreground mt-1">{newSku}</p>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Description / Notes (always shown once type is selected) ── */}
+        {changeType && (
           <div className="space-y-2">
-            <Label htmlFor="notes">Additional Notes</Label>
+            <Label htmlFor="notes">
+              Description of Change{" "}
+              <span className="text-muted-foreground text-xs font-normal">(optional but recommended)</span>
+            </Label>
             <Textarea
               id="notes"
-              placeholder="Describe any procedural changes, e.g., lubrication frequency changed from weekly to fortnightly, new motor runs hotter so inspection interval reduced…"
+              placeholder="Describe what changed and any additional context you want the AI to use when updating documents…"
               value={textNotes}
               onChange={(e) => setTextNotes(e.target.value)}
               rows={4}
               className="bg-card border-border resize-none"
             />
           </div>
+        )}
 
-          <Button onClick={() => setStep(2)} disabled={!canProceedStep1} className="w-full gap-2">
-            Continue <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {/* Step 2 — Upload Assets */}
-      {step === 2 && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground mb-1">Upload Change Assets</h2>
-            <p className="text-sm text-muted-foreground">Upload drawings, photos, SDS documents, or other supporting files. All uploads are optional but improve AI accuracy.</p>
-          </div>
-
-          {/* Asset type selector + upload */}
-          <div className="space-y-3">
-            <Label>Select Asset Type & Upload</Label>
-            <div className="flex gap-3">
-              <select
-                value={pendingAssetType}
-                onChange={(e) => setPendingAssetType(e.target.value)}
-                className="flex-1 bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {ASSET_TYPES.map((at) => (
-                  <option key={at.id} value={at.id}>{at.label}</option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="gap-2 shrink-0"
-              >
-                <Upload className="h-4 w-4" />
-                Choose File
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.doc,.docx,.dwg,.dxf"
-                onChange={handleFileSelect}
-              />
-            </div>
-          </div>
-
-          {/* Uploaded assets list */}
-          {assets.length > 0 && (
-            <div className="space-y-2">
-              <Label>Uploaded Files ({assets.length})</Label>
-              <div className="space-y-2">
-                {assets.map((asset, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
-                    {asset.preview ? (
-                      <img src={asset.preview} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0">
-                        <Upload className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{asset.file.name}</p>
-                      <p className="text-xs text-muted-foreground">{ASSET_TYPES.find((a) => a.id === asset.assetType)?.label}</p>
-                    </div>
-                    <button onClick={() => removeAsset(idx)} className="text-muted-foreground hover:text-destructive transition-colors">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep(1)} className="gap-2">
-              <ArrowLeft className="h-4 w-4" /> Back
-            </Button>
-            <Button onClick={() => setStep(3)} className="flex-1 gap-2">
-              Continue <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3 — Parameter / SKU Changes */}
-      {step === 3 && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground mb-1">Parameter & Code Changes</h2>
-            <p className="text-sm text-muted-foreground">Record specific old vs. new values — price, grammage, frequency, speed, temperature, or any other parameter that changed.</p>
-          </div>
-
-          <div className="space-y-3">
-            {skuRows.map((row, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-4 space-y-1">
-                  {idx === 0 && <Label className="text-xs">Parameter Name</Label>}
-                  <Input
-                    placeholder="e.g., Motor Speed"
-                    value={row.fieldName}
-                    onChange={(e) => updateSkuRow(idx, "fieldName", e.target.value)}
-                    className="bg-card border-border text-sm"
-                  />
-                </div>
-                <div className="col-span-3 space-y-1">
-                  {idx === 0 && <Label className="text-xs">Old Value</Label>}
-                  <Input
-                    placeholder="e.g., 1450"
-                    value={row.oldValue}
-                    onChange={(e) => updateSkuRow(idx, "oldValue", e.target.value)}
-                    className="bg-card border-border text-sm"
-                  />
-                </div>
-                <div className="col-span-3 space-y-1">
-                  {idx === 0 && <Label className="text-xs">New Value</Label>}
-                  <Input
-                    placeholder="e.g., 1800"
-                    value={row.newValue}
-                    onChange={(e) => updateSkuRow(idx, "newValue", e.target.value)}
-                    className="bg-card border-border text-sm"
-                  />
-                </div>
-                <div className="col-span-1 space-y-1">
-                  {idx === 0 && <Label className="text-xs">Unit</Label>}
-                  <Input
-                    placeholder="RPM"
-                    value={row.unit}
-                    onChange={(e) => updateSkuRow(idx, "unit", e.target.value)}
-                    className="bg-card border-border text-sm"
-                  />
-                </div>
-                <div className="col-span-1 flex justify-end">
-                  {skuRows.length > 1 && (
-                    <button onClick={() => removeSkuRow(idx)} className="text-muted-foreground hover:text-destructive transition-colors mb-1">
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={addSkuRow} className="gap-2 mt-2">
-              <Plus className="h-3.5 w-3.5" /> Add Parameter
-            </Button>
-          </div>
-
-          {/* Summary */}
+        {/* ── Summary card before submit ── */}
+        {canProceedStep1 && (
           <div className="bg-card border border-border rounded-xl p-5 space-y-3">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
               Ready to Submit
             </h3>
             <div className="space-y-1.5 text-sm">
-              <div className="flex gap-2"><span className="text-muted-foreground w-28 shrink-0">Title:</span><span className="text-foreground">{title}</span></div>
-              <div className="flex gap-2"><span className="text-muted-foreground w-28 shrink-0">Change Type:</span><span className="text-foreground capitalize">{changeType.replace("_", " ")}</span></div>
-              <div className="flex gap-2"><span className="text-muted-foreground w-28 shrink-0">Assets:</span><span className="text-foreground">{assets.length} file(s)</span></div>
-              <div className="flex gap-2"><span className="text-muted-foreground w-28 shrink-0">Parameters:</span><span className="text-foreground">{skuRows.filter((r) => r.fieldName).length} row(s)</span></div>
+              <div className="flex gap-2">
+                <span className="text-muted-foreground w-28 shrink-0">Title:</span>
+                <span className="text-foreground">{title}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-muted-foreground w-28 shrink-0">Change Type:</span>
+                <span className="text-foreground">{selectedType?.label}</span>
+              </div>
+              {changeType === "part_change" && (
+                <>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-28 shrink-0">Sub-type:</span>
+                    <span className="text-foreground capitalize">{subTypeLabel}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-28 shrink-0">Old file:</span>
+                    <span className="text-foreground truncate">{oldFile?.name ?? "—"}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-28 shrink-0">New file:</span>
+                    <span className="text-foreground truncate">{newFile?.name ?? "—"}</span>
+                  </div>
+                </>
+              )}
+              {(changeType === "weight_change" || changeType === "price_change") && (
+                <>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-28 shrink-0">{valueLabel}:</span>
+                    <span className="text-red-400 line-through">{oldValue}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-emerald-400">{newValue}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-28 shrink-0">SKU Code:</span>
+                    <span className="text-red-400 line-through">{oldSku}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-emerald-400">{newSku}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+        )}
 
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep(2)} className="gap-2">
-              <ArrowLeft className="h-4 w-4" /> Back
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting} className="flex-1 gap-2">
-              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : <><CheckCircle2 className="h-4 w-4" /> Create Change Event</>}
-            </Button>
-          </div>
-        </div>
-      )}
+        {/* ── Submit button ── */}
+        <Button
+          onClick={handleSubmit}
+          disabled={!canProceedStep1 || submitting}
+          className="w-full gap-2"
+          size="lg"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Creating Change Event…
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="h-4 w-4" />
+              Create Change Event &amp; Analyse Impact
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

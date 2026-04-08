@@ -219,11 +219,12 @@ export async function getDraftById(id: number) {
   const result = await db.select().from(documentDrafts).where(eq(documentDrafts.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
-export async function updateDraftStatus(id: number, status: "generating"|"pending_review"|"approved"|"revision_requested"|"rejected", reviewNotes?: string, approvedBy?: number) {
+export async function updateDraftStatus(id: number, status: "generating"|"pending_review"|"routed_for_approval"|"approved"|"revision_requested"|"rejected", reviewNotes?: string, approvedBy?: number, approverName?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const updateData: Record<string, unknown> = { status };
   if (reviewNotes !== undefined) updateData.reviewNotes = reviewNotes;
+  if (approverName !== undefined) updateData.approverName = approverName;
   if (approvedBy !== undefined) { updateData.approvedBy = approvedBy; updateData.approvedAt = new Date(); }
   await db.update(documentDrafts).set(updateData).where(eq(documentDrafts.id, id));
 }

@@ -1,0 +1,2 @@
+ALTER TABLE `documentDrafts` MODIFY COLUMN `status` enum('generating','pending_review','routed_for_approval','approved','revision_requested','rejected') NOT NULL DEFAULT 'generating';--> statement-breakpoint
+ALTER TABLE `documentDrafts` ADD `approverName` varchar(255);

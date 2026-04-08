@@ -1,0 +1,3 @@
+ALTER TABLE `changeAssets` MODIFY COLUMN `assetType` enum('drawing_old','drawing_new','photo_old','photo_new','sds','other','manual_old','manual_new') NOT NULL;--> statement-breakpoint
+ALTER TABLE `changeEvents` MODIFY COLUMN `changeType` enum('hardware','process','material','packaging','supplier','regulatory','safety','maintenance','part_change','weight_change','price_change') NOT NULL;--> statement-breakpoint
+ALTER TABLE `changeEvents` ADD `partSubType` enum('manual','drawing');

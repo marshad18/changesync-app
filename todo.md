@@ -56,3 +56,25 @@
 
 ## GitHub
 - [x] All 45 sample documents uploaded to marshad18/change-flow repository
+
+## Change Request — Wizard Redesign (April 2026)
+- [x] Update schema: add new changeType enum values (part_change, weight_change, price_change) and assetType values (manual_old, manual_new, drawing_old, drawing_new)
+- [x] Update schema: add partSubType column to changeEvents (manual | drawing) for part change sub-selection
+- [x] Run pnpm db:push to migrate schema
+- [x] Rebuild NewChange.tsx: dropdown for change type (Part Change / Weight Change / Price Change)
+- [x] Part Change: show sub-option (Manual or Drawing), then upload old + new file
+- [x] Weight Change: show old weight, new weight, old SKU code, new SKU code fields
+- [x] Price Change: show old price, new price, old SKU code, new SKU code fields
+- [x] All change types: include free-text description box
+- [x] Update backend create procedure to accept new changeType enum values and partSubType
+- [x] Update analyzeImpact prompt to use new change type context
+- [x] Update generateDrafts prompt to use new change type context
+- [x] Impact Analysis screen: show all uploaded documents with impacted/not-impacted status clearly
+- [x] Generate button on Impact Analysis screen triggers draft generation
+- [x] Draft Review: side-by-side old document (left) vs AI-updated document (right) with changes highlighted
+- [x] Route for Approval button on Draft Review page
+- [x] Update vitest tests for new change types
+
+## Gap Resolution (April 2026)
+- [x] Add routeForApproval mutation: new status "routed_for_approval", approverName field stored in reviewNotes, UI reflects routed vs approved states distinctly
+- [x] Diff highlighting in split view: render AI draft with inline change markers (added/updated sections highlighted in amber) vs original

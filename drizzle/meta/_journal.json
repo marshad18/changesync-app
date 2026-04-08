@@ -15,6 +15,20 @@
       "when": 1775281161387,
       "tag": "0001_crazy_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1775662279398,
+      "tag": "0002_typical_union_jack",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1775662763079,
+      "tag": "0003_smart_killer_shrike",
+      "breakpoints": true
     }
   ]
 }
