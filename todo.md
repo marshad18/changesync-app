@@ -148,3 +148,14 @@
 - [x] For Image: show Upload / Camera toggle on both old and new slots
 - [x] Update subTypeLabel helper to return correct label for each of the 3 types
 - [x] Update accept attribute on file inputs: Manual/Drawing accept PDFs/docs, Image accepts image files only
+
+## Enterprise UI Redesign (April 2026)
+- [x] Redesign global CSS: deep navy/slate dark theme, Inter/DM Sans typography, premium spacing system
+- [x] Redesign DashboardLayout: wider sidebar with logo, section dividers, user avatar, subtle gradients
+- [x] Redesign Home/Dashboard page: enterprise KPI cards, activity feed, professional header
+- [x] Redesign Login/Register pages: split-screen layout with brand panel on left, form on right
+- [x] Redesign NewChange wizard: clean step-by-step form with premium card styling
+- [x] Redesign ChangeDetail impact analysis: professional document grid with status indicators
+- [x] Redesign DraftReview: polished split-view with document comparison UI
+- [x] Add micro-interactions: hover states, transitions, focus rings throughout
+- [x] Ensure all text is readable against backgrounds (no invisible text)

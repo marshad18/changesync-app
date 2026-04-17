@@ -172,94 +172,137 @@ export default function NewChange() {
     partSubType === "drawing" ? "Engineering Drawing" : "Image";
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      {/* Progress Stepper */}
-      <div className="mb-8">
-        <ChangeProgressStepper currentStep={1} />
+    <div className="min-h-screen" style={{ background: "oklch(0.09 0.018 255)" }}>
+      {/* Top header bar */}
+      <div
+        className="sticky top-0 z-20 flex items-center justify-between px-8 py-4"
+        style={{
+          background: "oklch(0.11 0.020 255 / 0.95)",
+          borderBottom: "1px solid oklch(0.20 0.020 255)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setLocation("/")}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+          <div className="h-4 w-px" style={{ background: "oklch(0.25 0.020 255)" }} />
+          <div>
+            <h1 className="text-base font-semibold text-foreground tracking-tight">New Change Event</h1>
+            <p className="text-xs text-muted-foreground">Define the change and submit for AI analysis</p>
+          </div>
+        </div>
+        <Button
+          onClick={handleSubmit}
+          disabled={!canProceedStep1 || submitting}
+          size="sm"
+          className="gap-2 font-semibold"
+          style={{
+            background: canProceedStep1 && !submitting
+              ? "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))"
+              : undefined,
+            border: "none",
+            boxShadow: canProceedStep1 && !submitting ? "0 4px 16px oklch(0.58 0.22 260 / 0.3)" : undefined,
+          }}
+        >
+          {submitting ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Submitting…</>
+          ) : (
+            <><CheckCircle2 className="h-3.5 w-3.5" /> Create & Analyse</>
+          )}
+        </Button>
       </div>
 
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-8">
-        <button
-          onClick={() => setLocation("/")}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">New Change Event</h1>
-          <p className="text-sm text-muted-foreground">
-            Select the type of change and provide the details
-          </p>
-        </div>
-      </div>
+      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+        {/* Progress Stepper */}
+        <ChangeProgressStepper currentStep={1} />
 
       <div className="space-y-8">
         {/* ── Change Event Title ── */}
-        <div className="space-y-2">
-          <Label htmlFor="title">
-            Change Event Title <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="title"
-            placeholder="e.g., Motor replacement on Detergent Line 3"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="bg-card border-border"
-          />
+        <div
+          className="rounded-2xl p-6 space-y-4"
+          style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Change Details</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="title" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Event Title <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="title"
+              placeholder="e.g., Motor replacement on Detergent Line 3"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-11 text-sm"
+              style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+            />
+          </div>
         </div>
 
-        {/* ── Change Type Dropdown ── */}
-        <div className="space-y-3">
-          <Label>
-            Change Type <span className="text-destructive">*</span>
-          </Label>
-          <div className="relative">
-            <select
-              value={changeType}
-              onChange={(e) => {
-                setChangeType(e.target.value as ChangeType | "");
-                setOldValue("");
-                setNewValue("");
-                setOldSku("");
-                setNewSku("");
-                setOldFile(null);
-                setNewFile(null);
-              }}
-              className="w-full appearance-none bg-card border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 pr-10"
-            >
-              <option value="">Select a change type…</option>
-              {CHANGE_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        {/* ── Change Type ── */}
+        <div
+          className="rounded-2xl p-6 space-y-4"
+          style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Change Type</p>
           </div>
-
-          {/* Selected type description */}
-          {selectedType && (
-            <div
-              className={`flex items-start gap-3 p-4 rounded-xl border ${selectedType.borderColor} ${selectedType.bgColor}`}
-            >
-              <selectedType.icon className={`h-5 w-5 mt-0.5 shrink-0 ${selectedType.color}`} />
-              <p className="text-sm text-muted-foreground leading-relaxed">{selectedType.desc}</p>
-            </div>
-          )}
+          <div className="grid grid-cols-3 gap-3">
+            {CHANGE_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  setChangeType(opt.id);
+                  setOldValue("");
+                  setNewValue("");
+                  setOldSku("");
+                  setNewSku("");
+                  setOldFile(null);
+                  setNewFile(null);
+                }}
+                className="p-4 rounded-xl text-left transition-all"
+                style={{
+                  background: changeType === opt.id ? "oklch(0.58 0.22 260 / 0.12)" : "oklch(0.10 0.018 255)",
+                  border: `1px solid ${changeType === opt.id ? "oklch(0.58 0.22 260 / 0.5)" : "oklch(0.22 0.020 255)"}`,
+                  boxShadow: changeType === opt.id ? "0 0 0 1px oklch(0.58 0.22 260 / 0.2)" : "none",
+                }}
+              >
+                <opt.icon className={`h-5 w-5 mb-2 ${opt.color}`} />
+                <p className={`text-sm font-semibold ${changeType === opt.id ? "text-foreground" : "text-muted-foreground"}`}>
+                  {opt.label}
+                </p>
+                <p className="text-[11px] text-muted-foreground/70 mt-1 leading-snug">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── PART CHANGE: sub-type + file uploads ── */}
         {changeType === "part_change" && (
-          <div className="space-y-6">
+          <div
+            className="rounded-2xl p-6 space-y-6"
+            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Part Change Details</p>
+            </div>
             {/* Sub-type selector */}
             <div className="space-y-2">
-              <Label>Document Type</Label>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Document Type</Label>
               <div className="grid grid-cols-3 gap-3">
-                {([
-                  { id: "manual" as PartSubType, label: "Manual", desc: "Upload old and new equipment manuals (PDF)", accept: ".pdf,.doc,.docx" },
-                  { id: "drawing" as PartSubType, label: "Engineering Drawing", desc: "Upload old and new engineering drawings (PDF, DWG)", accept: ".pdf,.dwg,.dxf" },
-                  { id: "image" as PartSubType, label: "Image", desc: "Upload or photograph the old and new part", accept: ".png,.jpg,.jpeg,.webp" },
+              {([
+                  { id: "manual" as PartSubType, label: "Manual", desc: "Equipment manuals (PDF, DOCX)", accept: ".pdf,.doc,.docx" },
+                  { id: "drawing" as PartSubType, label: "Engineering Drawing", desc: "Drawings (PDF, DWG, DXF)", accept: ".pdf,.dwg,.dxf" },
+                  { id: "image" as PartSubType, label: "Image", desc: "Upload or photograph the part", accept: ".png,.jpg,.jpeg,.webp" },
                 ]).map((sub) => (
                   <button
                     key={sub.id}
@@ -271,18 +314,18 @@ export default function NewChange() {
                       setNewInputMode("upload");
                       setWebcamSlot(null);
                     }}
-                    className={`p-4 rounded-xl border text-left transition-all ${
-                      partSubType === sub.id
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                        : "border-border bg-card hover:border-primary/40"
-                    }`}
+                    className="p-4 rounded-xl text-left transition-all"
+                    style={{
+                      background: partSubType === sub.id ? "oklch(0.58 0.22 260 / 0.10)" : "oklch(0.10 0.018 255)",
+                      border: `1px solid ${partSubType === sub.id ? "oklch(0.58 0.22 260 / 0.45)" : "oklch(0.22 0.020 255)"}`,
+                    }}
                   >
                     <p className={`text-sm font-semibold ${
-                      partSubType === sub.id ? "text-primary" : "text-foreground"
+                      partSubType === sub.id ? "text-primary" : "text-muted-foreground"
                     }`}>
                       {sub.label}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">{sub.desc}</p>
+                    <p className="text-[11px] text-muted-foreground/70 mt-1">{sub.desc}</p>
                   </button>
                 ))}
               </div>
@@ -291,7 +334,7 @@ export default function NewChange() {
             {/* Old part slot */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Old {subTypeLabel} <span className="text-destructive">*</span>
                 </Label>
                 {/* Mode toggle — only for Image sub-type */}
@@ -323,7 +366,10 @@ export default function NewChange() {
 
               {/* File already selected */}
               {oldFile ? (
-                <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
+                <div
+                  className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+                >
                   {oldFile.type.startsWith("image/") ? (
                     <img
                       src={URL.createObjectURL(oldFile)}
@@ -361,7 +407,11 @@ export default function NewChange() {
                 /* Upload mode */
                 <button
                   onClick={() => oldFileRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"
+                  className="w-full flex items-center justify-center gap-2 p-5 rounded-xl text-sm text-muted-foreground hover:text-foreground transition-all"
+                  style={{
+                    border: "2px dashed oklch(0.28 0.022 255)",
+                    background: "oklch(0.10 0.018 255 / 0.5)",
+                  }}
                 >
                   <Upload className="h-4 w-4" />
                   Click to upload old {subTypeLabel.toLowerCase()}
@@ -387,7 +437,7 @@ export default function NewChange() {
             {/* New part slot */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   New {subTypeLabel} <span className="text-destructive">*</span>
                 </Label>
                 {/* Mode toggle — only for Image sub-type */}
@@ -419,7 +469,10 @@ export default function NewChange() {
 
               {/* File already selected */}
               {newFile ? (
-                <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
+                <div
+                  className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+                >
                   {newFile.type.startsWith("image/") ? (
                     <img
                       src={URL.createObjectURL(newFile)}
@@ -457,7 +510,11 @@ export default function NewChange() {
                 /* Upload mode */
                 <button
                   onClick={() => newFileRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"
+                  className="w-full flex items-center justify-center gap-2 p-5 rounded-xl text-sm text-muted-foreground hover:text-foreground transition-all"
+                  style={{
+                    border: "2px dashed oklch(0.28 0.022 255)",
+                    background: "oklch(0.10 0.018 255 / 0.5)",
+                  }}
                 >
                   <Upload className="h-4 w-4" />
                   Click to upload new {subTypeLabel.toLowerCase()}
@@ -484,69 +541,83 @@ export default function NewChange() {
 
         {/* ── WEIGHT CHANGE: old/new weight + SKU codes ── */}
         {changeType === "weight_change" && (
-          <div className="space-y-5">
+          <div
+            className="rounded-2xl p-6 space-y-5"
+            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.75 0.18 85)" }} />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Weight Change Details</p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Old Weight <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., 500g"
                   value={oldValue}
                   onChange={(e) => setOldValue(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   New Weight <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., 450g"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Old SKU Code <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-A"
                   value={oldSku}
                   onChange={(e) => setOldSku(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   New SKU Code <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-B"
                   value={newSku}
                   onChange={(e) => setNewSku(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
             </div>
 
             {/* Visual comparison */}
             {(oldValue || newValue) && (
-              <div className="flex items-center gap-3 p-4 bg-card border border-border rounded-xl">
-                <div className="flex-1 text-center">
-                  <p className="text-xs text-muted-foreground mb-1">Old Weight</p>
-                  <p className="text-lg font-bold text-red-400">{oldValue || "—"}</p>
-                  {oldSku && <p className="text-xs text-muted-foreground mt-1">{oldSku}</p>}
+              <div
+                className="flex items-center gap-4 p-4 rounded-xl"
+                style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+              >
+                <div className="flex-1 text-center p-3 rounded-lg" style={{ background: "oklch(0.55 0.22 25 / 0.08)" }}>
+                  <p className="text-[10px] text-muted-foreground/70 uppercase tracking-widest mb-1">Old Weight</p>
+                  <p className="text-xl font-bold" style={{ color: "oklch(0.65 0.20 25)" }}>{oldValue || "—"}</p>
+                  {oldSku && <p className="text-xs text-muted-foreground mt-1 font-mono">{oldSku}</p>}
                 </div>
                 <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
-                <div className="flex-1 text-center">
-                  <p className="text-xs text-muted-foreground mb-1">New Weight</p>
-                  <p className="text-lg font-bold text-emerald-400">{newValue || "—"}</p>
-                  {newSku && <p className="text-xs text-muted-foreground mt-1">{newSku}</p>}
+                <div className="flex-1 text-center p-3 rounded-lg" style={{ background: "oklch(0.65 0.18 145 / 0.08)" }}>
+                  <p className="text-[10px] text-muted-foreground/70 uppercase tracking-widest mb-1">New Weight</p>
+                  <p className="text-xl font-bold" style={{ color: "oklch(0.65 0.18 145)" }}>{newValue || "—"}</p>
+                  {newSku && <p className="text-xs text-muted-foreground mt-1 font-mono">{newSku}</p>}
                 </div>
               </div>
             )}
@@ -555,69 +626,83 @@ export default function NewChange() {
 
         {/* ── PRICE CHANGE: old/new price + SKU codes ── */}
         {changeType === "price_change" && (
-          <div className="space-y-5">
+          <div
+            className="rounded-2xl p-6 space-y-5"
+            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.65 0.18 145)" }} />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Price Change Details</p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Old Price <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., $4.99"
                   value={oldValue}
                   onChange={(e) => setOldValue(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   New Price <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., $5.49"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Old SKU Code <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-A"
                   value={oldSku}
                   onChange={(e) => setOldSku(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
               <div className="space-y-2">
-                <Label>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   New SKU Code <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-B"
                   value={newSku}
                   onChange={(e) => setNewSku(e.target.value)}
-                  className="bg-card border-border"
+                  className="h-11 text-sm"
+                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
                 />
               </div>
             </div>
 
             {/* Visual comparison */}
             {(oldValue || newValue) && (
-              <div className="flex items-center gap-3 p-4 bg-card border border-border rounded-xl">
-                <div className="flex-1 text-center">
-                  <p className="text-xs text-muted-foreground mb-1">Old Price</p>
-                  <p className="text-lg font-bold text-red-400">{oldValue || "—"}</p>
-                  {oldSku && <p className="text-xs text-muted-foreground mt-1">{oldSku}</p>}
+              <div
+                className="flex items-center gap-4 p-4 rounded-xl"
+                style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+              >
+                <div className="flex-1 text-center p-3 rounded-lg" style={{ background: "oklch(0.55 0.22 25 / 0.08)" }}>
+                  <p className="text-[10px] text-muted-foreground/70 uppercase tracking-widest mb-1">Old Price</p>
+                  <p className="text-xl font-bold" style={{ color: "oklch(0.65 0.20 25)" }}>{oldValue || "—"}</p>
+                  {oldSku && <p className="text-xs text-muted-foreground mt-1 font-mono">{oldSku}</p>}
                 </div>
                 <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
-                <div className="flex-1 text-center">
-                  <p className="text-xs text-muted-foreground mb-1">New Price</p>
-                  <p className="text-lg font-bold text-emerald-400">{newValue || "—"}</p>
-                  {newSku && <p className="text-xs text-muted-foreground mt-1">{newSku}</p>}
+                <div className="flex-1 text-center p-3 rounded-lg" style={{ background: "oklch(0.65 0.18 145 / 0.08)" }}>
+                  <p className="text-[10px] text-muted-foreground/70 uppercase tracking-widest mb-1">New Price</p>
+                  <p className="text-xl font-bold" style={{ color: "oklch(0.65 0.18 145)" }}>{newValue || "—"}</p>
+                  {newSku && <p className="text-xs text-muted-foreground mt-1 font-mono">{newSku}</p>}
                 </div>
               </div>
             )}
@@ -626,10 +711,17 @@ export default function NewChange() {
 
         {/* ── Description / Notes (always shown once type is selected) ── */}
         {changeType && (
-          <div className="space-y-2">
-            <Label htmlFor="notes">
-              Description of Change{" "}
-              <span className="text-muted-foreground text-xs font-normal">(optional but recommended)</span>
+          <div
+            className="rounded-2xl p-6 space-y-3"
+            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.72 0.15 200)" }} />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Change Description</p>
+            </div>
+            <Label htmlFor="notes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Describe what changed{" "}
+              <span className="text-muted-foreground/50 normal-case font-normal">(optional but recommended)</span>
             </Label>
             <Textarea
               id="notes"
@@ -637,16 +729,23 @@ export default function NewChange() {
               value={textNotes}
               onChange={(e) => setTextNotes(e.target.value)}
               rows={4}
-              className="bg-card border-border resize-none"
+              className="resize-none text-sm"
+              style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
             />
           </div>
         )}
 
         {/* ── Summary card before submit ── */}
         {canProceedStep1 && (
-          <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+          <div
+            className="rounded-2xl p-5 space-y-3"
+            style={{
+              background: "oklch(0.65 0.18 145 / 0.06)",
+              border: "1px solid oklch(0.65 0.18 145 / 0.25)",
+            }}
+          >
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <CheckCircle2 className="h-4 w-4" style={{ color: "oklch(0.65 0.18 145)" }} />
               Ready to Submit
             </h3>
             <div className="space-y-1.5 text-sm">
@@ -694,25 +793,7 @@ export default function NewChange() {
           </div>
         )}
 
-        {/* ── Submit button ── */}
-        <Button
-          onClick={handleSubmit}
-          disabled={!canProceedStep1 || submitting}
-          className="w-full gap-2"
-          size="lg"
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Creating Change Event…
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              Create Change Event &amp; Analyse Impact
-            </>
-          )}
-        </Button>
+      </div>
       </div>
     </div>
   );
