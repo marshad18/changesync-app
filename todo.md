@@ -80,24 +80,43 @@
 - [x] Diff highlighting in split view: render AI draft with inline change markers (added/updated sections highlighted in amber) vs original
 
 ## Bug Fix (April 2026)
-- [ ] Fix impact analysis returning no documents for Part Change (motor upload) — investigate analyzeImpact procedure, document library query, and LLM prompt
+- [x] Fix impact analysis returning no documents for Part Change (motor upload) — root cause was empty Document Library (no docs uploaded); empty-library warning added to Impact Analysis screen
 
 ## GitHub Integration (April 2026)
-- [ ] Add GITHUB_TOKEN secret to platform
-- [ ] Build server-side GitHub helper: push file to marshad18/change-flow repo on document upload
-- [ ] Build server-side GitHub helper: list and import files from marshad18/change-flow repo into Document Library
-- [ ] Wire GitHub push into documents.upload procedure (after S3 upload, also commit to GitHub)
-- [ ] Add "Import from GitHub" button in Document Library UI
-- [ ] Show GitHub sync status (linked/not linked) on each document card
+- [x] Add GITHUB_TOKEN secret to platform
+- [ ] Build server-side GitHub helper: push file to marshad18/change-flow repo on document upload (deferred — import direction implemented instead)
+- [x] Build server-side GitHub helper: list and import files from marshad18/change-flow repo into Document Library
+- [ ] Wire GitHub push into documents.upload procedure (deferred — not requested by user)
+- [x] Add "Import from GitHub" button in Document Library UI
+- [x] Show already-imported badge on files already in the library
 - [x] Add warning on Impact Analysis screen if Document Library is empty
-- [ ] Update tests for GitHub-linked upload flow
+- [x] Update tests for GitHub-linked upload flow
 
 ## GitHub Import Feature (April 2026)
-- [ ] Add GITHUB_TOKEN secret to platform for API access
-- [ ] Add GITHUB_REPO secret (marshad18/change-flow) as config
-- [ ] Build backend procedure: github.listFiles — lists all files in sample-documents folder from GitHub repo
-- [ ] Build backend procedure: github.importFiles — downloads selected files from GitHub, uploads to S3, saves to Document Library
-- [ ] Build Import from GitHub modal in Document Library: shows file list grouped by folder, checkboxes to select, Import button
-- [ ] Show already-imported badge on files already in the library
+- [x] Add GITHUB_TOKEN secret to platform for API access
+- [x] Add GITHUB_REPO secret (marshad18/change-flow) as config
+- [x] Build backend procedure: github.listFiles — lists all files in sample-documents folder from GitHub repo
+- [x] Build backend procedure: github.importFiles — downloads selected files from GitHub, uploads to S3, saves to Document Library
+- [x] Build Import from GitHub modal in Document Library: shows file list grouped by folder, checkboxes to select, Import button
+- [x] Show already-imported badge on files already in the library
 - [x] Add warning on Impact Analysis screen if Document Library is empty
 - [x] Update tests for GitHub import procedure
+
+## Email/Password Auth (April 2026)
+- [x] Add passwordHash and passwordResetToken/Expiry columns to users table in schema
+- [x] Run pnpm db:push to migrate schema
+- [x] Install bcryptjs for password hashing
+- [x] Add auth.register procedure (name, email, password — hash with bcrypt, create user, return JWT session)
+- [x] Add auth.login procedure (email, password — verify hash, return JWT session cookie)
+- [x] Add auth.forgotPassword procedure (email — generate reset token, send email via notification/SMTP)
+- [x] Add auth.resetPassword procedure (token, newPassword — verify token expiry, update hash)
+- [x] Remove Manus OAuth callback route and oauth helpers from auth flow
+- [x] Update auth.me to work with email/password sessions (no change needed if JWT cookie stays same)
+- [x] Build Login page (email + password form, link to register and forgot password)
+- [x] Build Register page (name, email, password, confirm password)
+- [x] Build Forgot Password page (email input, sends reset link)
+- [x] Build Reset Password page (token from URL, new password + confirm)
+- [x] Update App.tsx: add /login, /register, /forgot-password, /reset-password routes; remove Manus OAuth redirect
+- [x] Update useAuth hook / auth guard to redirect to /login instead of Manus OAuth portal
+- [x] Remove "Sign in with Manus" button from any UI
+- [x] Update vitest tests for new auth procedures

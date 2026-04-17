@@ -77,6 +77,53 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 }
 
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createEmailUser(data: { name: string; email: string; passwordHash: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(users).values({
+    openId: null,
+    name: data.name,
+    email: data.email,
+    passwordHash: data.passwordHash,
+    loginMethod: "email_password",
+    role: "user",
+    lastSignedIn: new Date(),
+  });
+  return getUserByEmail(data.email);
+}
+
+export async function updateUserPasswordHash(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ passwordHash, passwordResetToken: null, passwordResetExpiry: null }).where(eq(users.id, userId));
+}
+
+export async function setPasswordResetToken(userId: number, token: string, expiry: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ passwordResetToken: token, passwordResetExpiry: expiry }).where(eq(users.id, userId));
+}
+
+export async function getUserByResetToken(token: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.passwordResetToken, token)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function updateUserLastSignedIn(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
+}
+
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
@@ -86,6 +133,13 @@ export async function getUserByOpenId(openId: string) {
 
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 

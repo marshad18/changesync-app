@@ -1,11 +1,14 @@
 import { z } from "zod";
-import { COOKIE_NAME } from "@shared/const";
+import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
 import { listGitHubSampleDocs, downloadGitHubFile } from "./github";
+import { sdk } from "./_core/sdk";
 import {
   createChangeEvent, listChangeEvents, getChangeEventById, updateChangeEventStatus,
   createChangeAsset, getChangeAssetsByEventId,
@@ -13,6 +16,7 @@ import {
   createDocument, listDocuments, getDocumentById,
   createImpactAnalysis, getImpactAnalysesByEventId, updateImpactAnalysisStatus, deleteImpactAnalysesByEventId,
   createDocumentDraft, getDraftsByEventId, getDraftById, updateDraftStatus, updateDraftContent,
+  getUserByEmail, createEmailUser, updateUserPasswordHash, setPasswordResetToken, getUserByResetToken, updateUserLastSignedIn,
 } from "./db";
 
 function randomSuffix() { return Math.random().toString(36).substring(2, 10); }
@@ -31,6 +35,77 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+
+    register: publicProcedure.input(z.object({
+      name: z.string().min(1, "Name is required"),
+      email: z.string().email("Invalid email address"),
+      password: z.string().min(8, "Password must be at least 8 characters"),
+    })).mutation(async ({ input, ctx }) => {
+      const existing = await getUserByEmail(input.email.toLowerCase());
+      if (existing) throw new Error("An account with this email already exists.");
+      const passwordHash = await bcrypt.hash(input.password, 12);
+      const user = await createEmailUser({ name: input.name, email: input.email.toLowerCase(), passwordHash });
+      if (!user) throw new Error("Failed to create account.");
+      // Create session cookie
+      const sessionToken = await sdk.signSession({ openId: `email:${user.id}`, appId: "changesync", name: user.name ?? user.email ?? "" });
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+    }),
+
+    login: publicProcedure.input(z.object({
+      email: z.string().email(),
+      password: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const user = await getUserByEmail(input.email.toLowerCase());
+      if (!user || !user.passwordHash) throw new Error("Invalid email or password.");
+      const valid = await bcrypt.compare(input.password, user.passwordHash);
+      if (!valid) throw new Error("Invalid email or password.");
+      await updateUserLastSignedIn(user.id);
+      const sessionToken = await sdk.signSession({ openId: `email:${user.id}`, appId: "changesync", name: user.name ?? user.email ?? "" });
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+    }),
+
+    forgotPassword: publicProcedure.input(z.object({
+      email: z.string().email(),
+    })).mutation(async ({ input }) => {
+      const user = await getUserByEmail(input.email.toLowerCase());
+      // Always return success to prevent email enumeration
+      if (!user) return { success: true };
+      const token = randomBytes(32).toString("hex");
+      const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await setPasswordResetToken(user.id, token, expiry);
+      // Send reset email via notification system
+      try {
+        const { notifyOwner } = await import("./_core/notification");
+        await notifyOwner({
+          title: `Password Reset Request — ${user.email}`,
+          content: `A password reset was requested for ${user.email}.\n\nReset link (valid 1 hour):\n/reset-password?token=${token}\n\nIf this was not requested, ignore this message.`,
+        });
+      } catch (e) {
+        console.warn("[Auth] Failed to send reset email notification", e);
+      }
+      return { success: true };
+    }),
+
+    resetPassword: publicProcedure.input(z.object({
+      token: z.string().min(1),
+      password: z.string().min(8, "Password must be at least 8 characters"),
+    })).mutation(async ({ input, ctx }) => {
+      const user = await getUserByResetToken(input.token);
+      if (!user || !user.passwordResetExpiry) throw new Error("Invalid or expired reset link.");
+      if (new Date() > user.passwordResetExpiry) throw new Error("This reset link has expired. Please request a new one.");
+      const passwordHash = await bcrypt.hash(input.password, 12);
+      await updateUserPasswordHash(user.id, passwordHash);
+      // Auto-login after reset
+      const sessionToken = await sdk.signSession({ openId: `email:${user.id}`, appId: "changesync", name: user.name ?? user.email ?? "" });
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      return { success: true };
+    }),
+
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

@@ -19,7 +19,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { LayoutDashboard, LogOut, PanelLeft, GitBranch, FileText, Layers } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -71,7 +70,8 @@ export default function DashboardLayout({
           </div>
           <Button
             onClick={() => {
-              window.location.href = getLoginUrl();
+              window.history.pushState(null, "", "/login");
+              window.dispatchEvent(new PopStateEvent("popstate"));
             }}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
