@@ -133,7 +133,7 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({
       title: z.string().min(1),
       changeType: z.enum(["hardware","process","material","packaging","supplier","regulatory","safety","maintenance","part_change","weight_change","price_change"]),
-      partSubType: z.enum(["manual","drawing"]).optional(),
+      partSubType: z.enum(["manual","drawing","image"]).optional(),
       changeScope: z.enum(["substitution","upgrade","new_introduction"]).optional(),
       affectedEquipment: z.string().optional(),
       affectedSku: z.string().optional(),
@@ -146,7 +146,7 @@ export const appRouter = router({
 
     uploadAsset: protectedProcedure.input(z.object({
       changeEventId: z.number(),
-      assetType: z.enum(["drawing_old","drawing_new","photo_old","photo_new","sds","other","manual_old","manual_new"]),
+      assetType: z.enum(["drawing_old","drawing_new","photo_old","photo_new","sds","other","manual_old","manual_new","image_old","image_new"]),
       fileName: z.string(), mimeType: z.string(), fileDataBase64: z.string(),
     })).mutation(async ({ input }) => {
       const buffer = Buffer.from(input.fileDataBase64, "base64");

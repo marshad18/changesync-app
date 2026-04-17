@@ -1,0 +1,1 @@
+ALTER TABLE `changeEvents` MODIFY COLUMN `partSubType` enum('manual','drawing','image');

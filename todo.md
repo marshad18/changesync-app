@@ -140,3 +140,11 @@
 - [x] On capture, convert canvas snapshot to a File/Blob and store it the same way as an uploaded file (S3 upload)
 - [x] Show thumbnail preview of captured photo with retake button
 - [x] Handle browser permission denial gracefully with a clear error message
+
+## Part Change Sub-Type: 3 Options (April 2026)
+- [x] Update PartSubType to "manual" | "drawing" | "image" in schema and frontend types
+- [x] Update sub-type selector UI to show 3 cards: Manual, Engineering Drawing, Image
+- [x] For Manual and Drawing: show Upload-only slots (no camera toggle)
+- [x] For Image: show Upload / Camera toggle on both old and new slots
+- [x] Update subTypeLabel helper to return correct label for each of the 3 types
+- [x] Update accept attribute on file inputs: Manual/Drawing accept PDFs/docs, Image accepts image files only

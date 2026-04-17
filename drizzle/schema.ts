@@ -58,7 +58,7 @@ export const changeEvents = mysqlTable("changeEvents", {
     "price_change",
   ]).notNull(),
   // For part_change: 'manual' or 'drawing'
-  partSubType: mysqlEnum("partSubType", ["manual", "drawing"]),
+  partSubType: mysqlEnum("partSubType", ["manual", "drawing", "image"]),
   changeScope: mysqlEnum("changeScope", [
     "substitution",
     "upgrade",

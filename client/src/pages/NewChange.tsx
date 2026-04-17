@@ -16,7 +16,7 @@ import WebcamCapture from "@/components/WebcamCapture";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ChangeType = "part_change" | "weight_change" | "price_change";
-type PartSubType = "manual" | "drawing";
+type PartSubType = "manual" | "drawing" | "image";
 type AssetUpload = { assetType: string; file: File; preview?: string };
 
 // ─── Change type config ───────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ export default function NewChange() {
           const oldBase64 = await fileToBase64(oldFile);
           await uploadAssetMutation.mutateAsync({
             changeEventId: eventId,
-            assetType: partSubType === "manual" ? "manual_old" : "drawing_old",
+            assetType: partSubType === "manual" ? "manual_old" : partSubType === "drawing" ? "drawing_old" : "image_old",
             fileName: oldFile.name,
             mimeType: oldFile.type,
             fileDataBase64: oldBase64,
@@ -137,7 +137,7 @@ export default function NewChange() {
           const newBase64 = await fileToBase64(newFile);
           await uploadAssetMutation.mutateAsync({
             changeEventId: eventId,
-            assetType: partSubType === "manual" ? "manual_new" : "drawing_new",
+            assetType: partSubType === "manual" ? "manual_new" : partSubType === "drawing" ? "drawing_new" : "image_new",
             fileName: newFile.name,
             mimeType: newFile.type,
             fileDataBase64: newBase64,
@@ -167,7 +167,9 @@ export default function NewChange() {
 
   const valueLabel = changeType === "weight_change" ? "Weight" : changeType === "price_change" ? "Price" : "";
   const valuePlaceholder = changeType === "weight_change" ? "e.g., 500g" : "e.g., $4.99";
-  const subTypeLabel = partSubType === "manual" ? "Manual" : "Engineering Drawing";
+  const subTypeLabel =
+    partSubType === "manual" ? "Manual" :
+    partSubType === "drawing" ? "Engineering Drawing" : "Image";
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -253,33 +255,34 @@ export default function NewChange() {
             {/* Sub-type selector */}
             <div className="space-y-2">
               <Label>Document Type</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {(["manual", "drawing"] as PartSubType[]).map((sub) => (
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { id: "manual" as PartSubType, label: "Manual", desc: "Upload old and new equipment manuals (PDF)", accept: ".pdf,.doc,.docx" },
+                  { id: "drawing" as PartSubType, label: "Engineering Drawing", desc: "Upload old and new engineering drawings (PDF, DWG)", accept: ".pdf,.dwg,.dxf" },
+                  { id: "image" as PartSubType, label: "Image", desc: "Upload or photograph the old and new part", accept: ".png,.jpg,.jpeg,.webp" },
+                ]).map((sub) => (
                   <button
-                    key={sub}
+                    key={sub.id}
                     onClick={() => {
-                      setPartSubType(sub);
+                      setPartSubType(sub.id);
                       setOldFile(null);
                       setNewFile(null);
+                      setOldInputMode("upload");
+                      setNewInputMode("upload");
+                      setWebcamSlot(null);
                     }}
                     className={`p-4 rounded-xl border text-left transition-all ${
-                      partSubType === sub
+                      partSubType === sub.id
                         ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                         : "border-border bg-card hover:border-primary/40"
                     }`}
                   >
-                    <p
-                      className={`text-sm font-semibold capitalize ${
-                        partSubType === sub ? "text-primary" : "text-foreground"
-                      }`}
-                    >
-                      {sub === "manual" ? "Manual" : "Engineering Drawing"}
+                    <p className={`text-sm font-semibold ${
+                      partSubType === sub.id ? "text-primary" : "text-foreground"
+                    }`}>
+                      {sub.label}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {sub === "manual"
-                        ? "Upload old and new equipment manuals (PDF)"
-                        : "Upload old and new engineering drawings (PDF, DWG, image)"}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{sub.desc}</p>
                   </button>
                 ))}
               </div>
@@ -291,8 +294,8 @@ export default function NewChange() {
                 <Label>
                   Old {subTypeLabel} <span className="text-destructive">*</span>
                 </Label>
-                {/* Mode toggle */}
-                {!oldFile && webcamSlot !== "old" && (
+                {/* Mode toggle — only for Image sub-type */}
+                {partSubType === "image" && !oldFile && webcamSlot !== "old" && (
                   <div className="flex rounded-lg border border-border overflow-hidden text-xs">
                     <button
                       onClick={() => setOldInputMode("upload")}
@@ -339,14 +342,14 @@ export default function NewChange() {
                   </button>
                 </div>
               ) : webcamSlot === "old" ? (
-                /* Webcam open for old slot */
+                /* Webcam open for old slot — Image only */
                 <WebcamCapture
                   label={`Old ${subTypeLabel}`}
                   onCapture={(file) => { setOldFile(file); setWebcamSlot(null); }}
                   onCancel={() => { setWebcamSlot(null); setOldInputMode("upload"); }}
                 />
-              ) : oldInputMode === "camera" ? (
-                /* Camera mode — show open camera button */
+              ) : partSubType === "image" && oldInputMode === "camera" ? (
+                /* Camera mode — Image sub-type only */
                 <button
                   onClick={() => setWebcamSlot("old")}
                   className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-primary/40 rounded-xl text-sm text-primary hover:border-primary hover:bg-primary/5 transition-all"
@@ -368,7 +371,11 @@ export default function NewChange() {
                 ref={oldFileRef}
                 type="file"
                 className="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf,.doc,.docx"
+                accept={
+                  partSubType === "manual" ? ".pdf,.doc,.docx" :
+                  partSubType === "drawing" ? ".pdf,.dwg,.dxf" :
+                  ".png,.jpg,.jpeg,.webp"
+                }
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) setOldFile(f);
@@ -383,8 +390,8 @@ export default function NewChange() {
                 <Label>
                   New {subTypeLabel} <span className="text-destructive">*</span>
                 </Label>
-                {/* Mode toggle */}
-                {!newFile && webcamSlot !== "new" && (
+                {/* Mode toggle — only for Image sub-type */}
+                {partSubType === "image" && !newFile && webcamSlot !== "new" && (
                   <div className="flex rounded-lg border border-border overflow-hidden text-xs">
                     <button
                       onClick={() => setNewInputMode("upload")}
@@ -431,14 +438,14 @@ export default function NewChange() {
                   </button>
                 </div>
               ) : webcamSlot === "new" ? (
-                /* Webcam open for new slot */
+                /* Webcam open for new slot — Image only */
                 <WebcamCapture
                   label={`New ${subTypeLabel}`}
                   onCapture={(file) => { setNewFile(file); setWebcamSlot(null); }}
                   onCancel={() => { setWebcamSlot(null); setNewInputMode("upload"); }}
                 />
-              ) : newInputMode === "camera" ? (
-                /* Camera mode — show open camera button */
+              ) : partSubType === "image" && newInputMode === "camera" ? (
+                /* Camera mode — Image sub-type only */
                 <button
                   onClick={() => setWebcamSlot("new")}
                   className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-primary/40 rounded-xl text-sm text-primary hover:border-primary hover:bg-primary/5 transition-all"
@@ -460,7 +467,11 @@ export default function NewChange() {
                 ref={newFileRef}
                 type="file"
                 className="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf,.doc,.docx"
+                accept={
+                  partSubType === "manual" ? ".pdf,.doc,.docx" :
+                  partSubType === "drawing" ? ".pdf,.dwg,.dxf" :
+                  ".png,.jpg,.jpeg,.webp"
+                }
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) setNewFile(f);
