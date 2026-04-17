@@ -100,6 +100,8 @@ export const changeAssets = mysqlTable("changeAssets", {
     "other",
     "manual_old",
     "manual_new",
+    "image_old",
+    "image_new",
   ]).notNull(),
   fileUrl: text("fileUrl").notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),

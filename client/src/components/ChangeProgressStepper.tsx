@@ -91,7 +91,7 @@ export default function ChangeProgressStepper({
                   className={cn(
                     "text-xs font-semibold leading-tight",
                     done
-                      ? "text-emerald-400"
+                      ? "text-emerald-700"
                       : active
                       ? "text-primary"
                       : "text-muted-foreground"
@@ -114,7 +114,7 @@ export default function ChangeProgressStepper({
                 className={cn(
                   "text-[9px] font-bold uppercase tracking-widest",
                   done
-                    ? "text-emerald-500/70"
+                    ? "text-emerald-600/80"
                     : active
                     ? "text-primary/70"
                     : "text-muted-foreground/40"

@@ -1,0 +1,1 @@
+ALTER TABLE `changeAssets` MODIFY COLUMN `assetType` enum('drawing_old','drawing_new','photo_old','photo_new','sds','other','manual_old','manual_new','image_old','image_new') NOT NULL;

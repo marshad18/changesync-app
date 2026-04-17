@@ -1,8 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import StatusBadge from "@/components/StatusBadge";
+import { StatusBadge } from "@/components/StatusBadge";
 import {
   GitBranch,
   FileText,
@@ -10,13 +9,11 @@ import {
   Clock,
   Plus,
   ArrowRight,
-  TrendingUp,
-  AlertCircle,
   ChevronRight,
   Activity,
-  Layers,
-  Shield,
   Zap,
+  AlertCircle,
+  Shield,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
@@ -25,54 +22,48 @@ function StatCard({
   label,
   value,
   icon: Icon,
-  accent,
+  accentColor,
   sub,
 }: {
   label: string;
   value: string | number;
   icon: React.ElementType;
-  accent: string;
+  accentColor: string;
   sub?: string;
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-3"
+      className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-3 bg-card"
       style={{
-        background: "linear-gradient(145deg, oklch(0.13 0.022 255) 0%, oklch(0.11 0.018 255) 100%)",
-        border: "1px solid oklch(0.22 0.022 255)",
-        boxShadow: "0 1px 3px oklch(0 0 0 / 0.3)",
+        border: "1px solid oklch(0.88 0.008 255)",
+        boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.07)",
       }}
     >
-      {/* Background glow */}
-      <div
-        className="absolute top-0 right-0 w-24 h-24 rounded-full opacity-10 blur-2xl"
-        style={{ background: accent }}
-      />
-      <div className="flex items-start justify-between relative z-10">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+      <div className="flex items-start justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
           {label}
         </p>
         <div
           className="h-8 w-8 rounded-lg flex items-center justify-center"
-          style={{ background: `${accent}18`, border: `1px solid ${accent}30` }}
+          style={{ background: `${accentColor}14`, border: `1px solid ${accentColor}28` }}
         >
-          <Icon className="h-4 w-4" style={{ color: accent }} />
+          <Icon className="h-4 w-4" style={{ color: accentColor }} />
         </div>
       </div>
-      <div className="relative z-10">
+      <div>
         <p
-          className="text-3xl font-bold tracking-tight"
-          style={{
-            fontVariantNumeric: "tabular-nums",
-            letterSpacing: "-0.03em",
-          }}
+          className="text-3xl font-bold tracking-tight text-foreground"
+          style={{ fontVariantNumeric: "tabular-nums", letterSpacing: "-0.03em" }}
         >
           {value}
         </p>
-        {sub && (
-          <p className="text-xs text-muted-foreground mt-1">{sub}</p>
-        )}
+        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
       </div>
+      {/* Bottom accent bar */}
+      <div
+        className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-xl"
+        style={{ background: `linear-gradient(90deg, ${accentColor}50, transparent)` }}
+      />
     </div>
   );
 }
@@ -81,17 +72,17 @@ export default function Home() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: changes, isLoading: changesLoading } = trpc.changes.list.useQuery();
+  const { data: changes, isLoading: changesLoading } = trpc.changeEvents.list.useQuery();
   const { data: documents } = trpc.documents.list.useQuery();
 
   const totalChanges = changes?.length ?? 0;
-  const pendingApproval = changes?.filter(
-    (c) => c.status === "pending_approval" || c.status === "routed_for_approval"
+  const pendingApproval = (changes as any[])?.filter(
+    (c: any) => c.status === "pending_approval" || c.status === "routed_for_approval"
   ).length ?? 0;
-  const approved = changes?.filter((c) => c.status === "approved").length ?? 0;
+  const approved = (changes as any[])?.filter((c: any) => c.status === "approved").length ?? 0;
   const totalDocs = documents?.length ?? 0;
 
-  const recentChanges = changes?.slice(0, 6) ?? [];
+  const recentChanges = (changes as any[])?.slice(0, 6) ?? [];
 
   const changeTypeLabel = (t: string) => {
     if (t === "part_change") return "Part Change";
@@ -108,29 +99,17 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-full">
+    <div className="min-h-full bg-background">
+
       {/* ── Page header ─────────────────────────────────────────────────────── */}
       <div
-        className="px-8 py-8 relative overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(180deg, oklch(0.12 0.025 258) 0%, oklch(0.09 0.018 255) 100%)",
-          borderBottom: "1px solid oklch(0.22 0.022 255)",
-        }}
+        className="px-8 py-7 bg-card"
+        style={{ borderBottom: "1px solid oklch(0.88 0.008 255)" }}
       >
-        {/* Decorative grid */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "linear-gradient(oklch(0.94 0.008 240) 1px, transparent 1px), linear-gradient(90deg, oklch(0.94 0.008 240) 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
-        <div className="relative z-10 flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-muted-foreground mb-1">
-              {greeting()}, {user?.name?.split(" ")[0] ?? "there"}
+            <p className="text-sm text-muted-foreground mb-0.5">
+              {greeting()}, <span className="font-medium text-foreground">{user?.name?.split(" ")[0] ?? "there"}</span>
             </p>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Operations Dashboard
@@ -142,11 +121,11 @@ export default function Home() {
           <Button
             onClick={() => setLocation("/changes/new")}
             size="default"
-            className="gap-2 font-medium shadow-lg"
+            className="gap-2 font-semibold text-white shadow-md"
             style={{
-              background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
+              background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
               border: "none",
-              boxShadow: "0 4px 16px oklch(0.58 0.22 260 / 0.3)",
+              boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
             }}
           >
             <Plus className="h-4 w-4" />
@@ -156,42 +135,44 @@ export default function Home() {
       </div>
 
       <div className="px-8 py-8 space-y-8">
+
         {/* ── KPI Stats ───────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label="Total Changes"
             value={totalChanges}
             icon={GitBranch}
-            accent="oklch(0.58 0.22 260)"
+            accentColor="oklch(0.42 0.18 265)"
             sub="All time"
           />
           <StatCard
             label="Pending Approval"
             value={pendingApproval}
             icon={Clock}
-            accent="oklch(0.72 0.18 75)"
+            accentColor="oklch(0.58 0.18 75)"
             sub={pendingApproval > 0 ? "Requires attention" : "All clear"}
           />
           <StatCard
             label="Approved"
             value={approved}
             icon={CheckCircle2}
-            accent="oklch(0.65 0.18 145)"
+            accentColor="oklch(0.48 0.18 145)"
             sub="Completed changes"
           />
           <StatCard
             label="Documents"
             value={totalDocs}
             icon={FileText}
-            accent="oklch(0.65 0.16 200)"
+            accentColor="oklch(0.45 0.16 200)"
             sub="In library"
           />
         </div>
 
         {/* ── Main content grid ────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
           {/* Change Events list — 2/3 width */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Activity className="h-4 w-4 text-muted-foreground" />
@@ -199,23 +180,24 @@ export default function Home() {
               </div>
               <button
                 onClick={() => setLocation("/changes/new")}
-                className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                className="text-xs font-medium flex items-center gap-1 transition-colors"
+                style={{ color: "oklch(0.42 0.18 265)" }}
               >
                 View all <ChevronRight className="h-3 w-3" />
               </button>
             </div>
 
             <div
-              className="rounded-xl overflow-hidden"
-              style={{
-                border: "1px solid oklch(0.22 0.022 255)",
-                background: "oklch(0.11 0.020 255)",
-              }}
+              className="rounded-xl overflow-hidden bg-card"
+              style={{ border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
             >
               {changesLoading ? (
                 <div className="p-8 text-center">
                   <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                    <div
+                      className="h-4 w-4 rounded-full border-2 border-t-transparent animate-spin"
+                      style={{ borderColor: "oklch(0.42 0.18 265 / 0.3)", borderTopColor: "oklch(0.42 0.18 265)" }}
+                    />
                     Loading change events…
                   </div>
                 </div>
@@ -223,20 +205,20 @@ export default function Home() {
                 <div className="p-12 text-center">
                   <div
                     className="h-12 w-12 rounded-xl mx-auto mb-4 flex items-center justify-center"
-                    style={{ background: "oklch(0.58 0.22 260 / 0.1)", border: "1px solid oklch(0.58 0.22 260 / 0.2)" }}
+                    style={{ background: "oklch(0.92 0.012 265)", border: "1px solid oklch(0.82 0.015 265)" }}
                   >
-                    <GitBranch className="h-6 w-6 text-primary/60" />
+                    <GitBranch className="h-6 w-6" style={{ color: "oklch(0.42 0.18 265)" }} />
                   </div>
-                  <p className="text-sm font-medium text-foreground mb-1">No change events yet</p>
+                  <p className="text-sm font-semibold text-foreground mb-1">No change events yet</p>
                   <p className="text-xs text-muted-foreground mb-4">
                     Create your first change event to get started.
                   </p>
                   <Button
                     size="sm"
                     onClick={() => setLocation("/changes/new")}
-                    className="gap-1.5 text-xs"
+                    className="gap-1.5 text-xs text-white"
                     style={{
-                      background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
+                      background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
                       border: "none",
                     }}
                   >
@@ -244,57 +226,52 @@ export default function Home() {
                   </Button>
                 </div>
               ) : (
-                <div className="divide-y divide-border/50">
-                  {recentChanges.map((change, i) => (
-                    <button
-                      key={change.id}
-                      onClick={() => setLocation(`/changes/${change.id}`)}
-                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors text-left group"
-                    >
-                      {/* Index number */}
-                      <div
-                        className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold"
-                        style={{
-                          background: "oklch(0.58 0.22 260 / 0.08)",
-                          color: "oklch(0.72 0.18 255)",
-                          border: "1px solid oklch(0.58 0.22 260 / 0.15)",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
+                <div>
+                  {/* Table header */}
+                  <div
+                    className="grid grid-cols-[1fr_auto] px-5 py-2.5"
+                    style={{
+                      borderBottom: "1px solid oklch(0.88 0.008 255)",
+                      background: "oklch(0.975 0.004 250)",
+                    }}
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Change Event</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Status</span>
+                  </div>
+                  <div className="divide-y" style={{ borderColor: "oklch(0.92 0.006 250)" }}>
+                    {recentChanges.map((change: any) => (
+                      <button
+                        key={change.id}
+                        onClick={() => setLocation(`/changes/${change.id}`)}
+                        className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-secondary/60 transition-colors text-left group"
                       >
-                        {String(i + 1).padStart(2, "0")}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                             {change.title}
                           </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-muted-foreground font-medium">
+                              {changeTypeLabel(change.changeType)}
+                            </span>
+                            {change.equipmentTag && (
+                              <>
+                                <span className="text-muted-foreground/40">·</span>
+                                <span className="text-[11px] text-muted-foreground">{change.equipmentTag}</span>
+                              </>
+                            )}
+                            <span className="text-muted-foreground/40">·</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {format(new Date(change.createdAt), "d MMM yyyy")}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-muted-foreground/60 font-medium uppercase tracking-wide">
-                            {changeTypeLabel(change.changeType)}
-                          </span>
-                          {change.equipmentTag && (
-                            <>
-                              <span className="text-muted-foreground/30">·</span>
-                              <span className="text-[11px] text-muted-foreground/60">
-                                {change.equipmentTag}
-                              </span>
-                            </>
-                          )}
-                          <span className="text-muted-foreground/30">·</span>
-                          <span className="text-[11px] text-muted-foreground/50">
-                            {format(new Date(change.createdAt), "d MMM yyyy")}
-                          </span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <StatusBadge status={change.status} />
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <StatusBadge status={change.status} />
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -302,6 +279,7 @@ export default function Home() {
 
           {/* Right column — 1/3 width */}
           <div className="space-y-4">
+
             {/* Quick actions */}
             <div>
               <div className="flex items-center gap-2 mb-3">
@@ -315,100 +293,85 @@ export default function Home() {
                     label: "New Change Event",
                     sub: "Log a part, weight, or price change",
                     path: "/changes/new",
-                    accent: "oklch(0.58 0.22 260)",
+                    accent: "oklch(0.42 0.18 265)",
                   },
                   {
                     icon: FileText,
                     label: "Document Library",
                     sub: "Manage and import documents",
                     path: "/documents",
-                    accent: "oklch(0.65 0.16 200)",
+                    accent: "oklch(0.45 0.16 200)",
                   },
                 ].map((action) => (
                   <button
                     key={action.path}
                     onClick={() => setLocation(action.path)}
-                    className="w-full flex items-center gap-3 p-3.5 rounded-xl text-left hover:bg-white/[0.04] transition-all group"
-                    style={{
-                      background: "oklch(0.12 0.020 255)",
-                      border: "1px solid oklch(0.22 0.022 255)",
-                    }}
+                    className="w-full flex items-center gap-3 p-3.5 rounded-xl text-left hover:bg-secondary transition-all group bg-card"
+                    style={{ border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 2px oklch(0.18 0.020 255 / 0.05)" }}
                   >
                     <div
                       className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
-                      style={{
-                        background: `${action.accent}15`,
-                        border: `1px solid ${action.accent}25`,
-                      }}
+                      style={{ background: `${action.accent}12`, border: `1px solid ${action.accent}22` }}
                     >
                       <action.icon className="h-4 w-4" style={{ color: action.accent }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{action.label}</p>
+                      <p className="text-sm font-semibold text-foreground">{action.label}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{action.sub}</p>
                     </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Platform info */}
+            {/* Platform info card */}
             <div
-              className="rounded-xl p-5 relative overflow-hidden"
+              className="rounded-xl p-5 bg-card"
               style={{
-                background: "linear-gradient(145deg, oklch(0.14 0.030 260) 0%, oklch(0.11 0.022 255) 100%)",
-                border: "1px solid oklch(0.58 0.22 260 / 0.2)",
+                border: "1px solid oklch(0.82 0.015 265)",
+                background: "linear-gradient(145deg, oklch(0.96 0.010 265) 0%, oklch(0.98 0.006 250) 100%)",
               }}
             >
-              <div
-                className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10 blur-3xl"
-                style={{ background: "oklch(0.58 0.22 260)" }}
-              />
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield className="h-4 w-4 text-primary/70" />
-                  <p className="text-xs font-semibold text-primary/80 uppercase tracking-wider">
-                    ChangeSync Enterprise
-                  </p>
-                </div>
-                <p className="text-sm text-foreground font-medium mb-1">
-                  AI-powered change management
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-4 w-4" style={{ color: "oklch(0.42 0.18 265)" }} />
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "oklch(0.42 0.18 265)" }}>
+                  ChangeSync Enterprise
                 </p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Automatically identifies impacted documents, generates AI-updated drafts, and routes them for approval — all in one workflow.
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {["Part Changes", "Weight Changes", "Price Changes"].map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                      style={{
-                        background: "oklch(0.58 0.22 260 / 0.12)",
-                        border: "1px solid oklch(0.58 0.22 260 / 0.2)",
-                        color: "oklch(0.72 0.18 255)",
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+              </div>
+              <p className="text-sm font-semibold text-foreground mb-1">
+                AI-powered change management
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Automatically identifies impacted documents, generates AI-updated drafts, and routes them for approval — all in one workflow.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {["Part Changes", "Weight Changes", "Price Changes"].map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{
+                      background: "oklch(0.92 0.012 265)",
+                      border: "1px solid oklch(0.80 0.015 265)",
+                      color: "oklch(0.38 0.18 265)",
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
               </div>
             </div>
 
-            {/* Document library summary */}
+            {/* Document library empty warning */}
             {totalDocs === 0 && (
               <div
-                className="rounded-xl p-5"
-                style={{
-                  background: "oklch(0.12 0.020 255)",
-                  border: "1px solid oklch(0.72 0.18 75 / 0.2)",
-                }}
+                className="rounded-xl p-4 bg-card"
+                style={{ border: "1px solid oklch(0.86 0.018 85)" }}
               >
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "oklch(0.58 0.18 75)" }} />
                   <div>
-                    <p className="text-sm font-medium text-foreground mb-1">
+                    <p className="text-sm font-semibold text-foreground mb-1">
                       Document Library is empty
                     </p>
                     <p className="text-xs text-muted-foreground mb-3">
@@ -416,7 +379,8 @@ export default function Home() {
                     </p>
                     <button
                       onClick={() => setLocation("/documents")}
-                      className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1"
+                      className="text-xs font-semibold flex items-center gap-1 transition-colors"
+                      style={{ color: "oklch(0.58 0.18 75)" }}
                     >
                       Go to Document Library <ArrowRight className="h-3 w-3" />
                     </button>

@@ -27,27 +27,27 @@ const CHANGE_TYPE_OPTIONS = [
     label: "Part Change",
     icon: FileText,
     desc: "A part has been replaced — upload the old and new manual or engineering drawing",
-    color: "text-blue-400",
-    borderColor: "border-blue-500/30",
-    bgColor: "bg-blue-500/10",
+    color: "text-blue-600",
+    borderColor: "border-blue-500/20",
+    bgColor: "bg-blue-50",
   },
   {
     id: "weight_change" as ChangeType,
     label: "Weight Change",
     icon: Weight,
     desc: "The product weight has changed — enter old and new weight with SKU codes",
-    color: "text-amber-400",
-    borderColor: "border-amber-500/30",
-    bgColor: "bg-amber-500/10",
+    color: "text-amber-600",
+    borderColor: "border-amber-500/20",
+    bgColor: "bg-amber-50",
   },
   {
     id: "price_change" as ChangeType,
     label: "Price Change",
     icon: DollarSign,
     desc: "The product price has changed — enter old and new price with SKU codes",
-    color: "text-emerald-400",
-    borderColor: "border-emerald-500/30",
-    bgColor: "bg-emerald-500/10",
+    color: "text-emerald-600",
+    borderColor: "border-emerald-500/20",
+    bgColor: "bg-emerald-50",
   },
 ];
 
@@ -172,13 +172,13 @@ export default function NewChange() {
     partSubType === "drawing" ? "Engineering Drawing" : "Image";
 
   return (
-    <div className="min-h-screen" style={{ background: "oklch(0.09 0.018 255)" }}>
+    <div className="min-h-full bg-background">
       {/* Top header bar */}
       <div
         className="sticky top-0 z-20 flex items-center justify-between px-8 py-4"
         style={{
-          background: "oklch(0.11 0.020 255 / 0.95)",
-          borderBottom: "1px solid oklch(0.20 0.020 255)",
+          background: "oklch(1 0 0 / 0.96)",
+          borderBottom: "1px solid oklch(0.88 0.008 255)",
           backdropFilter: "blur(12px)",
         }}
       >
@@ -190,7 +190,7 @@ export default function NewChange() {
             <ArrowLeft className="h-4 w-4" />
             Back
           </button>
-          <div className="h-4 w-px" style={{ background: "oklch(0.25 0.020 255)" }} />
+          <div className="h-4 w-px bg-border" />
           <div>
             <h1 className="text-base font-semibold text-foreground tracking-tight">New Change Event</h1>
             <p className="text-xs text-muted-foreground">Define the change and submit for AI analysis</p>
@@ -203,10 +203,10 @@ export default function NewChange() {
           className="gap-2 font-semibold"
           style={{
             background: canProceedStep1 && !submitting
-              ? "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))"
+              ? "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))"
               : undefined,
             border: "none",
-            boxShadow: canProceedStep1 && !submitting ? "0 4px 16px oklch(0.58 0.22 260 / 0.3)" : undefined,
+            boxShadow: canProceedStep1 && !submitting ? "0 4px 12px oklch(0.42 0.18 265 / 0.25)" : undefined,
           }}
         >
           {submitting ? (
@@ -225,10 +225,10 @@ export default function NewChange() {
         {/* ── Change Event Title ── */}
         <div
           className="rounded-2xl p-6 space-y-4"
-          style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+          style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
         >
           <div className="flex items-center gap-2 mb-1">
-            <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
+            <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.42 0.18 265)" }} />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Change Details</p>
           </div>
           <div className="space-y-2">
@@ -240,8 +240,7 @@ export default function NewChange() {
               placeholder="e.g., Motor replacement on Detergent Line 3"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="h-11 text-sm"
-              style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+              className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
             />
           </div>
         </div>
@@ -249,10 +248,10 @@ export default function NewChange() {
         {/* ── Change Type ── */}
         <div
           className="rounded-2xl p-6 space-y-4"
-          style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+          style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
         >
           <div className="flex items-center gap-2 mb-1">
-            <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
+            <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.42 0.18 265)" }} />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Change Type</p>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -270,9 +269,9 @@ export default function NewChange() {
                 }}
                 className="p-4 rounded-xl text-left transition-all"
                 style={{
-                  background: changeType === opt.id ? "oklch(0.58 0.22 260 / 0.12)" : "oklch(0.10 0.018 255)",
-                  border: `1px solid ${changeType === opt.id ? "oklch(0.58 0.22 260 / 0.5)" : "oklch(0.22 0.020 255)"}`,
-                  boxShadow: changeType === opt.id ? "0 0 0 1px oklch(0.58 0.22 260 / 0.2)" : "none",
+                  background: changeType === opt.id ? "oklch(0.94 0.012 265)" : "oklch(0.975 0.004 250)",
+                  border: `1px solid ${changeType === opt.id ? "oklch(0.42 0.18 265)" : "oklch(0.88 0.008 255)"}`,
+                  boxShadow: changeType === opt.id ? "0 0 0 2px oklch(0.42 0.18 265 / 0.15)" : "none",
                 }}
               >
                 <opt.icon className={`h-5 w-5 mb-2 ${opt.color}`} />
@@ -289,10 +288,10 @@ export default function NewChange() {
         {changeType === "part_change" && (
           <div
             className="rounded-2xl p-6 space-y-6"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div className="flex items-center gap-2">
-              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.42 0.18 265)" }} />
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Part Change Details</p>
             </div>
             {/* Sub-type selector */}
@@ -316,8 +315,8 @@ export default function NewChange() {
                     }}
                     className="p-4 rounded-xl text-left transition-all"
                     style={{
-                      background: partSubType === sub.id ? "oklch(0.58 0.22 260 / 0.10)" : "oklch(0.10 0.018 255)",
-                      border: `1px solid ${partSubType === sub.id ? "oklch(0.58 0.22 260 / 0.45)" : "oklch(0.22 0.020 255)"}`,
+                      background: partSubType === sub.id ? "oklch(0.94 0.012 265)" : "oklch(0.975 0.004 250)",
+                      border: `1px solid ${partSubType === sub.id ? "oklch(0.42 0.18 265)" : "oklch(0.88 0.008 255)"}`,
                     }}
                   >
                     <p className={`text-sm font-semibold ${
@@ -368,7 +367,7 @@ export default function NewChange() {
               {oldFile ? (
                 <div
                   className="flex items-center gap-3 p-3 rounded-xl"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+                  style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.88 0.008 255)" }}
                 >
                   {oldFile.type.startsWith("image/") ? (
                     <img
@@ -409,8 +408,8 @@ export default function NewChange() {
                   onClick={() => oldFileRef.current?.click()}
                   className="w-full flex items-center justify-center gap-2 p-5 rounded-xl text-sm text-muted-foreground hover:text-foreground transition-all"
                   style={{
-                    border: "2px dashed oklch(0.28 0.022 255)",
-                    background: "oklch(0.10 0.018 255 / 0.5)",
+                    border: "2px dashed oklch(0.80 0.012 255)",
+                    background: "oklch(0.975 0.004 250)",
                   }}
                 >
                   <Upload className="h-4 w-4" />
@@ -471,7 +470,7 @@ export default function NewChange() {
               {newFile ? (
                 <div
                   className="flex items-center gap-3 p-3 rounded-xl"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+                  style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.88 0.008 255)" }}
                 >
                   {newFile.type.startsWith("image/") ? (
                     <img
@@ -512,8 +511,8 @@ export default function NewChange() {
                   onClick={() => newFileRef.current?.click()}
                   className="w-full flex items-center justify-center gap-2 p-5 rounded-xl text-sm text-muted-foreground hover:text-foreground transition-all"
                   style={{
-                    border: "2px dashed oklch(0.28 0.022 255)",
-                    background: "oklch(0.10 0.018 255 / 0.5)",
+                    border: "2px dashed oklch(0.80 0.012 255)",
+                    background: "oklch(0.975 0.004 250)",
                   }}
                 >
                   <Upload className="h-4 w-4" />
@@ -543,10 +542,10 @@ export default function NewChange() {
         {changeType === "weight_change" && (
           <div
             className="rounded-2xl p-6 space-y-5"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div className="flex items-center gap-2">
-              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.75 0.18 85)" }} />
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.18 75)" }} />
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Weight Change Details</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -558,8 +557,7 @@ export default function NewChange() {
                   placeholder="e.g., 500g"
                   value={oldValue}
                   onChange={(e) => setOldValue(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
               <div className="space-y-2">
@@ -570,8 +568,7 @@ export default function NewChange() {
                   placeholder="e.g., 450g"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
             </div>
@@ -584,8 +581,7 @@ export default function NewChange() {
                   placeholder="e.g., SKU-001-A"
                   value={oldSku}
                   onChange={(e) => setOldSku(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
               <div className="space-y-2">
@@ -596,8 +592,7 @@ export default function NewChange() {
                   placeholder="e.g., SKU-001-B"
                   value={newSku}
                   onChange={(e) => setNewSku(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
             </div>
@@ -606,7 +601,7 @@ export default function NewChange() {
             {(oldValue || newValue) && (
               <div
                 className="flex items-center gap-4 p-4 rounded-xl"
-                style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+                style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.88 0.008 255)" }}
               >
                 <div className="flex-1 text-center p-3 rounded-lg" style={{ background: "oklch(0.55 0.22 25 / 0.08)" }}>
                   <p className="text-[10px] text-muted-foreground/70 uppercase tracking-widest mb-1">Old Weight</p>
@@ -628,10 +623,10 @@ export default function NewChange() {
         {changeType === "price_change" && (
           <div
             className="rounded-2xl p-6 space-y-5"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div className="flex items-center gap-2">
-              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.65 0.18 145)" }} />
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.48 0.18 145)" }} />
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Price Change Details</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -643,8 +638,7 @@ export default function NewChange() {
                   placeholder="e.g., $4.99"
                   value={oldValue}
                   onChange={(e) => setOldValue(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
               <div className="space-y-2">
@@ -655,8 +649,7 @@ export default function NewChange() {
                   placeholder="e.g., $5.49"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
             </div>
@@ -669,8 +662,7 @@ export default function NewChange() {
                   placeholder="e.g., SKU-001-A"
                   value={oldSku}
                   onChange={(e) => setOldSku(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
               <div className="space-y-2">
@@ -681,8 +673,7 @@ export default function NewChange() {
                   placeholder="e.g., SKU-001-B"
                   value={newSku}
                   onChange={(e) => setNewSku(e.target.value)}
-                  className="h-11 text-sm"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="h-11 text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               </div>
             </div>
@@ -691,7 +682,7 @@ export default function NewChange() {
             {(oldValue || newValue) && (
               <div
                 className="flex items-center gap-4 p-4 rounded-xl"
-                style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+                style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.88 0.008 255)" }}
               >
                 <div className="flex-1 text-center p-3 rounded-lg" style={{ background: "oklch(0.55 0.22 25 / 0.08)" }}>
                   <p className="text-[10px] text-muted-foreground/70 uppercase tracking-widest mb-1">Old Price</p>
@@ -713,10 +704,10 @@ export default function NewChange() {
         {changeType && (
           <div
             className="rounded-2xl p-6 space-y-3"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div className="flex items-center gap-2">
-              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.72 0.15 200)" }} />
+              <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.45 0.16 200)" }} />
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Change Description</p>
             </div>
             <Label htmlFor="notes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -729,8 +720,7 @@ export default function NewChange() {
               value={textNotes}
               onChange={(e) => setTextNotes(e.target.value)}
               rows={4}
-              className="resize-none text-sm"
-              style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+              className="resize-none text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
             />
           </div>
         )}
@@ -740,8 +730,8 @@ export default function NewChange() {
           <div
             className="rounded-2xl p-5 space-y-3"
             style={{
-              background: "oklch(0.65 0.18 145 / 0.06)",
-              border: "1px solid oklch(0.65 0.18 145 / 0.25)",
+              background: "oklch(0.96 0.012 145)",
+              border: "1px solid oklch(0.82 0.06 145)",
             }}
           >
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -777,15 +767,15 @@ export default function NewChange() {
                 <>
                   <div className="flex gap-2">
                     <span className="text-muted-foreground w-28 shrink-0">{valueLabel}:</span>
-                    <span className="text-red-400 line-through">{oldValue}</span>
+                    <span className="text-destructive line-through">{oldValue}</span>
                     <span className="text-muted-foreground">→</span>
-                    <span className="text-emerald-400">{newValue}</span>
+                    <span style={{ color: "oklch(0.48 0.18 145)" }}>{newValue}</span>
                   </div>
                   <div className="flex gap-2">
                     <span className="text-muted-foreground w-28 shrink-0">SKU Code:</span>
-                    <span className="text-red-400 line-through">{oldSku}</span>
+                    <span className="text-destructive line-through">{oldSku}</span>
                     <span className="text-muted-foreground">→</span>
-                    <span className="text-emerald-400">{newSku}</span>
+                    <span style={{ color: "oklch(0.48 0.18 145)" }}>{newSku}</span>
                   </div>
                 </>
               )}

@@ -124,11 +124,11 @@ export default function DraftReview() {
   const isRouted = status === "routed_for_approval";
 
   function statusStyle(): React.CSSProperties {
-    if (status === "approved") return { background: "oklch(0.65 0.18 145 / 0.15)", color: "oklch(0.70 0.18 145)", border: "1px solid oklch(0.65 0.18 145 / 0.30)" };
-    if (status === "rejected") return { background: "oklch(0.55 0.22 25 / 0.15)", color: "oklch(0.65 0.20 25)", border: "1px solid oklch(0.55 0.22 25 / 0.30)" };
-    if (status === "routed_for_approval") return { background: "oklch(0.58 0.22 260 / 0.15)", color: "oklch(0.72 0.18 260)", border: "1px solid oklch(0.58 0.22 260 / 0.30)" };
-    if (status === "revision_requested") return { background: "oklch(0.75 0.18 85 / 0.15)", color: "oklch(0.80 0.16 85)", border: "1px solid oklch(0.75 0.18 85 / 0.30)" };
-    return { background: "oklch(0.40 0.05 255 / 0.15)", color: "oklch(0.65 0.08 255)", border: "1px solid oklch(0.40 0.05 255 / 0.30)" };
+    if (status === "approved") return { background: "oklch(0.95 0.012 145)", color: "oklch(0.38 0.14 145)", border: "1px solid oklch(0.80 0.06 145)" };
+    if (status === "rejected") return { background: "oklch(0.96 0.012 25)", color: "oklch(0.42 0.16 25)", border: "1px solid oklch(0.82 0.06 25)" };
+    if (status === "routed_for_approval") return { background: "oklch(0.93 0.012 265)", color: "oklch(0.38 0.16 265)", border: "1px solid oklch(0.80 0.015 265)" };
+    if (status === "revision_requested") return { background: "oklch(0.96 0.012 85)", color: "oklch(0.42 0.14 75)", border: "1px solid oklch(0.82 0.06 85)" };
+    return { background: "oklch(0.94 0.008 255)", color: "oklch(0.35 0.06 255)", border: "1px solid oklch(0.82 0.012 255)" };
   }
 
   const statusLabel: Record<string, string> = {
@@ -140,14 +140,14 @@ export default function DraftReview() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "oklch(0.09 0.018 255)" }}>
+    <div className="min-h-full bg-background">
 
       {/* ── Sticky header bar ── */}
       <div
         className="sticky top-0 z-20 flex items-center justify-between px-8 py-4"
         style={{
-          background: "oklch(0.11 0.020 255 / 0.95)",
-          borderBottom: "1px solid oklch(0.20 0.020 255)",
+          background: "oklch(1 0 0 / 0.96)",
+          borderBottom: "1px solid oklch(0.88 0.008 255)",
           backdropFilter: "blur(12px)",
         }}
       >
@@ -171,7 +171,7 @@ export default function DraftReview() {
           {/* View mode toggle */}
           <div
             className="flex items-center gap-1 p-1 rounded-xl"
-            style={{ background: "oklch(0.14 0.020 255)", border: "1px solid oklch(0.22 0.020 255)" }}
+            style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.88 0.008 255)" }}
           >
             <button
               onClick={() => setViewMode("single")}
@@ -215,7 +215,7 @@ export default function DraftReview() {
           {doc?.code && (
             <span
               className="text-xs px-3 py-1.5 rounded-lg font-mono font-medium"
-              style={{ background: "oklch(0.15 0.022 255)", border: "1px solid oklch(0.22 0.020 255)", color: "oklch(0.75 0.06 255)" }}
+              style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}
             >
               {doc.code}
             </span>
@@ -223,7 +223,7 @@ export default function DraftReview() {
           {doc?.category && (
             <span
               className="text-xs px-3 py-1.5 rounded-lg font-medium"
-              style={{ background: "oklch(0.15 0.022 255)", border: "1px solid oklch(0.22 0.020 255)", color: "oklch(0.65 0.06 255)" }}
+              style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}
             >
               {doc.category}
             </span>
@@ -231,7 +231,7 @@ export default function DraftReview() {
           {doc?.owner && (
             <span
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
-              style={{ background: "oklch(0.15 0.022 255)", border: "1px solid oklch(0.22 0.020 255)", color: "oklch(0.65 0.06 255)" }}
+              style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}
             >
               <User className="h-3 w-3" />
               {doc.owner}
@@ -256,11 +256,11 @@ export default function DraftReview() {
             {/* Left: Original Document */}
             <div
               className="rounded-2xl overflow-hidden flex flex-col"
-              style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+              style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
             >
               <div
                 className="flex items-center justify-between px-5 py-3.5 shrink-0"
-                style={{ borderBottom: "1px solid oklch(0.18 0.020 255)", background: "oklch(0.11 0.020 255)" }}
+                style={{ borderBottom: "1px solid oklch(0.88 0.008 255)", background: "oklch(0.975 0.004 250)" }}
               >
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5" />
@@ -312,7 +312,7 @@ export default function DraftReview() {
             <div
               className="rounded-2xl overflow-hidden flex flex-col"
               style={{
-                background: "oklch(0.12 0.022 255)",
+                background: "oklch(1 0 0)",
                 border: "1px solid oklch(0.58 0.22 260 / 0.25)",
               }}
             >
@@ -350,8 +350,7 @@ export default function DraftReview() {
                     value={editedContent}
                     onChange={(e) => setEditedContent(e.target.value)}
                     rows={25}
-                    className="font-mono text-sm resize-none w-full h-full"
-                    style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                    className="font-mono text-sm resize-none w-full h-full bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                   />
                 ) : (
                   <div className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-li:text-foreground/80 prose-strong:text-foreground prose-invert">
@@ -365,11 +364,11 @@ export default function DraftReview() {
           /* Single view */
           <div
             className="rounded-2xl overflow-hidden"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div
               className="flex items-center justify-between px-5 py-3.5"
-              style={{ borderBottom: "1px solid oklch(0.18 0.020 255)", background: "oklch(0.11 0.020 255)" }}
+              style={{ borderBottom: "1px solid oklch(0.88 0.008 255)", background: "oklch(0.975 0.004 250)" }}
             >
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">AI-Generated Draft</span>
               <div className="flex items-center gap-2">
@@ -402,8 +401,7 @@ export default function DraftReview() {
                   value={editedContent}
                   onChange={(e) => setEditedContent(e.target.value)}
                   rows={30}
-                  className="font-mono text-sm resize-none w-full"
-                  style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                  className="font-mono text-sm resize-none w-full bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                 />
               ) : (
                 <div className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-li:text-foreground/80 prose-strong:text-foreground prose-invert">
@@ -418,7 +416,7 @@ export default function DraftReview() {
         {isActionable && (
           <div
             className="rounded-2xl p-6 space-y-5"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div className="flex items-center gap-2">
               <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
@@ -442,7 +440,7 @@ export default function DraftReview() {
                     onChange={(e) => setApproverName(e.target.value)}
                     className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2"
                     style={{
-                      background: "oklch(0.10 0.018 255)",
+                      background: "oklch(0.975 0.004 250)",
                       border: "1px solid oklch(0.25 0.022 255)",
                     }}
                   />
@@ -452,9 +450,9 @@ export default function DraftReview() {
                   disabled={routeMutation.isPending}
                   className="gap-2 shrink-0"
                   style={{
-                    background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
+                    background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
                     border: "none",
-                    boxShadow: "0 4px 16px oklch(0.58 0.22 260 / 0.3)",
+                    boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
                   }}
                 >
                   {routeMutation.isPending ? (
@@ -485,8 +483,7 @@ export default function DraftReview() {
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 rows={3}
-                className="resize-none text-sm"
-                style={{ background: "oklch(0.10 0.018 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                className="resize-none text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
               />
             </div>
 

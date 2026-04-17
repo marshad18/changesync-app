@@ -159,3 +159,13 @@
 - [x] Redesign DraftReview: polished split-view with document comparison UI
 - [x] Add micro-interactions: hover states, transitions, focus rings throughout
 - [x] Ensure all text is readable against backgrounds (no invisible text)
+
+## Light Enterprise Theme Redesign (April 2026)
+- [x] Redesign global CSS: off-white/warm-grey light theme, Inter typography, navy/slate accent palette
+- [x] Update index.html: Google Fonts for Inter
+- [x] Redesign DashboardLayout: light sidebar, navy brand bar, clean dividers
+- [x] Redesign Home/Dashboard page: light KPI cards, clean table rows
+- [x] Redesign Login/Register/ForgotPassword/ResetPassword: split-screen light layout
+- [x] Redesign NewChange wizard: light card surfaces, navy step indicators
+- [x] Redesign ChangeDetail: light impact analysis cards, professional status badges
+- [x] Redesign DraftReview: light split-view panels, clean approval section

@@ -37,21 +37,21 @@ const CHANGE_TYPE_ICONS: Record<string, React.ElementType> = {
 
 function statusStyle(status: string): React.CSSProperties {
   const map: Record<string, React.CSSProperties> = {
-    draft: { background: "oklch(0.40 0.05 255 / 0.15)", color: "oklch(0.65 0.08 255)", border: "1px solid oklch(0.40 0.05 255 / 0.30)" },
-    analyzing: { background: "oklch(0.58 0.22 260 / 0.15)", color: "oklch(0.72 0.18 260)", border: "1px solid oklch(0.58 0.22 260 / 0.30)" },
-    analysis_complete: { background: "oklch(0.75 0.18 85 / 0.15)", color: "oklch(0.80 0.16 85)", border: "1px solid oklch(0.75 0.18 85 / 0.30)" },
-    generating_drafts: { background: "oklch(0.58 0.22 260 / 0.15)", color: "oklch(0.72 0.18 260)", border: "1px solid oklch(0.58 0.22 260 / 0.30)" },
-    pending_approval: { background: "oklch(0.75 0.18 85 / 0.15)", color: "oklch(0.80 0.16 85)", border: "1px solid oklch(0.75 0.18 85 / 0.30)" },
-    approved: { background: "oklch(0.65 0.18 145 / 0.15)", color: "oklch(0.70 0.18 145)", border: "1px solid oklch(0.65 0.18 145 / 0.30)" },
-    rejected: { background: "oklch(0.55 0.22 25 / 0.15)", color: "oklch(0.65 0.20 25)", border: "1px solid oklch(0.55 0.22 25 / 0.30)" },
+    draft: { background: "oklch(0.94 0.008 255)", color: "oklch(0.35 0.06 255)", border: "1px solid oklch(0.82 0.012 255)" },
+    analyzing: { background: "oklch(0.93 0.012 265)", color: "oklch(0.38 0.16 265)", border: "1px solid oklch(0.80 0.015 265)" },
+    analysis_complete: { background: "oklch(0.96 0.012 85)", color: "oklch(0.42 0.14 75)", border: "1px solid oklch(0.82 0.06 85)" },
+    generating_drafts: { background: "oklch(0.93 0.012 265)", color: "oklch(0.38 0.16 265)", border: "1px solid oklch(0.80 0.015 265)" },
+    pending_approval: { background: "oklch(0.96 0.012 85)", color: "oklch(0.42 0.14 75)", border: "1px solid oklch(0.82 0.06 85)" },
+    approved: { background: "oklch(0.95 0.012 145)", color: "oklch(0.38 0.14 145)", border: "1px solid oklch(0.80 0.06 145)" },
+    rejected: { background: "oklch(0.96 0.012 25)", color: "oklch(0.42 0.16 25)", border: "1px solid oklch(0.82 0.06 25)" },
   };
   return map[status] ?? map.draft;
 }
 
 function confidenceStyle(c: string): React.CSSProperties {
-  if (c === "high") return { background: "oklch(0.65 0.18 145 / 0.12)", color: "oklch(0.70 0.18 145)", border: "1px solid oklch(0.65 0.18 145 / 0.25)" };
-  if (c === "medium") return { background: "oklch(0.75 0.18 85 / 0.12)", color: "oklch(0.80 0.16 85)", border: "1px solid oklch(0.75 0.18 85 / 0.25)" };
-  return { background: "oklch(0.55 0.22 25 / 0.12)", color: "oklch(0.65 0.20 25)", border: "1px solid oklch(0.55 0.22 25 / 0.25)" };
+  if (c === "high") return { background: "oklch(0.95 0.012 145)", color: "oklch(0.38 0.14 145)", border: "1px solid oklch(0.80 0.06 145)" };
+  if (c === "medium") return { background: "oklch(0.96 0.012 85)", color: "oklch(0.42 0.14 75)", border: "1px solid oklch(0.82 0.06 85)" };
+  return { background: "oklch(0.96 0.012 25)", color: "oklch(0.42 0.16 25)", border: "1px solid oklch(0.82 0.06 25)" };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -137,14 +137,14 @@ export default function ChangeDetail() {
   if (drafts.length > 0 && ["pending_approval", "approved", "rejected"].includes(status)) completedSteps.push(3);
 
   return (
-    <div className="min-h-screen" style={{ background: "oklch(0.09 0.018 255)" }}>
+    <div className="min-h-full bg-background">
 
       {/* ── Sticky header bar ── */}
       <div
         className="sticky top-0 z-20 flex items-center justify-between px-8 py-4"
         style={{
-          background: "oklch(0.11 0.020 255 / 0.95)",
-          borderBottom: "1px solid oklch(0.20 0.020 255)",
+          background: "oklch(1 0 0 / 0.96)",
+          borderBottom: "1px solid oklch(0.88 0.008 255)",
           backdropFilter: "blur(12px)",
         }}
       >
@@ -192,7 +192,7 @@ export default function ChangeDetail() {
         <div className="flex items-center gap-3 flex-wrap">
           <span
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
-            style={{ background: "oklch(0.15 0.022 255)", border: "1px solid oklch(0.22 0.020 255)", color: "oklch(0.75 0.06 255)" }}
+            style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}
           >
             <ChangeIcon className="h-3.5 w-3.5" />
             {CHANGE_TYPE_LABELS[event.changeType] ?? event.changeType}
@@ -200,7 +200,7 @@ export default function ChangeDetail() {
           {(event as any).partSubType && (
             <span
               className="text-xs px-3 py-1.5 rounded-lg font-medium capitalize"
-              style={{ background: "oklch(0.15 0.022 255)", border: "1px solid oklch(0.22 0.020 255)", color: "oklch(0.75 0.06 255)" }}
+              style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}
             >
               {(event as any).partSubType}
             </span>
@@ -213,7 +213,7 @@ export default function ChangeDetail() {
           {skus.length > 0 && (
             <div
               className="rounded-2xl p-5"
-              style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+              style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
             >
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.75 0.18 85)" }} />
@@ -237,7 +237,7 @@ export default function ChangeDetail() {
           {assets.length > 0 && (
             <div
               className="rounded-2xl p-5"
-              style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+              style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
             >
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.58 0.22 260)" }} />
@@ -268,7 +268,7 @@ export default function ChangeDetail() {
           {event.textNotes && (
             <div
               className="rounded-2xl p-5 md:col-span-2"
-              style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+              style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
             >
               <div className="flex items-center gap-2 mb-3">
                 <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.72 0.15 200)" }} />
@@ -307,7 +307,7 @@ export default function ChangeDetail() {
         {(status === "draft" || status === "analysis_complete") && analyses.length === 0 && (
           <div
             className="rounded-2xl p-12 text-center"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
@@ -328,9 +328,9 @@ export default function ChangeDetail() {
                 disabled={isAnalyzing}
                 className="gap-2 min-w-[200px]"
                 style={{
-                  background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
+                  background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
                   border: "none",
-                  boxShadow: "0 4px 16px oklch(0.58 0.22 260 / 0.3)",
+                  boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
                 }}
               >
                 {isAnalyzing ? (
@@ -347,7 +347,7 @@ export default function ChangeDetail() {
         {isAnalyzing && (
           <div
             className="rounded-2xl p-10 text-center"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.58 0.22 260 / 0.20)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.82 0.015 265)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <div className="relative mx-auto mb-4 w-12 h-12">
               <Loader2 className="h-12 w-12 animate-spin" style={{ color: "oklch(0.58 0.22 260)" }} />
@@ -364,7 +364,7 @@ export default function ChangeDetail() {
             {/* Summary bar */}
             <div
               className="flex items-center justify-between p-4 rounded-2xl"
-              style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.20 0.020 255)" }}
+              style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
             >
               <div className="flex items-center gap-3">
                 <p className="text-sm font-semibold text-foreground">Impact Analysis Results</p>
@@ -400,7 +400,7 @@ export default function ChangeDetail() {
                       key={analysis.id}
                       className="rounded-2xl overflow-hidden transition-all"
                       style={{
-                        background: "oklch(0.12 0.022 255)",
+                        background: "oklch(1 0 0)",
                         border: "1px solid oklch(0.75 0.18 85 / 0.20)",
                       }}
                     >
@@ -513,7 +513,7 @@ export default function ChangeDetail() {
                     <div
                       key={analysis.id}
                       className="flex items-center gap-2 p-3 rounded-xl text-sm"
-                      style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.65 0.18 145 / 0.15)" }}
+                      style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.82 0.06 145)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
                     >
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: "oklch(0.65 0.18 145)" }} />
                       <span className="text-muted-foreground truncate text-xs">
@@ -555,9 +555,9 @@ export default function ChangeDetail() {
                       size="lg"
                       className="gap-2"
                       style={{
-                        background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
+                        background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
                         border: "none",
-                        boxShadow: "0 4px 16px oklch(0.58 0.22 260 / 0.3)",
+                        boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
                       }}
                     >
                       {isGenerating ? (
@@ -577,7 +577,7 @@ export default function ChangeDetail() {
         {isGenerating && (
           <div
             className="rounded-2xl p-10 text-center"
-            style={{ background: "oklch(0.12 0.022 255)", border: "1px solid oklch(0.58 0.22 260 / 0.20)" }}
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.82 0.015 265)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
           >
             <Loader2 className="h-10 w-10 animate-spin mx-auto mb-4" style={{ color: "oklch(0.58 0.22 260)" }} />
             <p className="text-sm text-foreground font-semibold">Generating document drafts…</p>
@@ -610,7 +610,7 @@ export default function ChangeDetail() {
                   key={draft.id}
                   className="flex items-center justify-between p-4 rounded-2xl transition-all"
                   style={{
-                    background: "oklch(0.12 0.022 255)",
+                    background: "oklch(1 0 0)",
                     border: "1px solid oklch(0.20 0.020 255)",
                   }}
                 >

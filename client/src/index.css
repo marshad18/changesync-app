@@ -3,7 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ─── Design Tokens — ChangeSync Enterprise ─────────────────────────────────── */
+/* ─── Design Tokens — ChangeSync Enterprise Light Theme ─────────────────────
+   Inspired by SAP Fiori, Siemens Industrial, and McKinsey internal tools.
+   Palette: warm off-white backgrounds, cool grey surfaces, navy/indigo accent.
+   This is a light-first theme — clean, readable, and professional.
+──────────────────────────────────────────────────────────────────────────── */
 @theme inline {
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
@@ -11,67 +15,58 @@
   --radius-xl: 0.75rem;
   --radius: var(--radius-md);
 
-  /* ── Deep Navy Enterprise Palette ──────────────────────────────────────────
-     Inspired by Bloomberg Terminal, SAP Fiori, and Palantir Foundry.
-     Background: near-black navy (#0A0E1A)
-     Surface: dark navy card (#0F1629)
-     Border: subtle slate (#1E2A45)
-     Primary: electric blue (#2563EB → oklch equivalent)
-     Accent gold: for premium highlights
-  ─────────────────────────────────────────────────────────────────────────── */
+  /* ── Backgrounds ────────────────────────────────────────────────────────── */
+  --color-background:          oklch(0.975 0.004 250);   /* warm off-white #F7F8FA */
+  --color-foreground:          oklch(0.18 0.020 255);    /* deep navy text #1C2333 */
 
-  /* Backgrounds */
-  --color-background:          oklch(0.09 0.018 255);   /* #0A0E1A — deep navy black */
-  --color-foreground:          oklch(0.94 0.008 240);   /* #EEF0F5 — off-white */
+  /* ── Cards & surfaces ───────────────────────────────────────────────────── */
+  --color-card:                oklch(1 0 0);             /* pure white cards */
+  --color-card-foreground:     oklch(0.18 0.020 255);
+  --color-popover:             oklch(1 0 0);
+  --color-popover-foreground:  oklch(0.18 0.020 255);
 
-  /* Cards & surfaces */
-  --color-card:                oklch(0.12 0.020 255);   /* #0F1629 — dark navy card */
-  --color-card-foreground:     oklch(0.94 0.008 240);
-  --color-popover:             oklch(0.14 0.022 255);   /* #131D35 */
-  --color-popover-foreground:  oklch(0.94 0.008 240);
-
-  /* Primary — electric blue */
-  --color-primary:             oklch(0.58 0.22 260);    /* #2563EB-ish */
+  /* ── Primary — navy/indigo ──────────────────────────────────────────────── */
+  --color-primary:             oklch(0.42 0.18 265);     /* #1D4ED8 deep navy-blue */
   --color-primary-foreground:  oklch(1 0 0);
 
-  /* Secondary */
-  --color-secondary:           oklch(0.16 0.020 255);   /* slightly lighter navy */
-  --color-secondary-foreground: oklch(0.75 0.010 240);
+  /* ── Secondary ──────────────────────────────────────────────────────────── */
+  --color-secondary:           oklch(0.94 0.006 250);    /* #EEF0F5 light grey */
+  --color-secondary-foreground: oklch(0.30 0.015 255);
 
-  /* Muted */
-  --color-muted:               oklch(0.18 0.018 255);
-  --color-muted-foreground:    oklch(0.52 0.012 240);
+  /* ── Muted ──────────────────────────────────────────────────────────────── */
+  --color-muted:               oklch(0.94 0.006 250);
+  --color-muted-foreground:    oklch(0.50 0.012 255);    /* mid grey */
 
-  /* Accent — subtle blue highlight */
-  --color-accent:              oklch(0.20 0.025 260);
-  --color-accent-foreground:   oklch(0.94 0.008 240);
+  /* ── Accent ─────────────────────────────────────────────────────────────── */
+  --color-accent:              oklch(0.94 0.012 265);    /* very light blue tint */
+  --color-accent-foreground:   oklch(0.30 0.015 255);
 
-  /* Destructive */
-  --color-destructive:         oklch(0.55 0.22 25);
+  /* ── Destructive ────────────────────────────────────────────────────────── */
+  --color-destructive:         oklch(0.52 0.22 25);
   --color-destructive-foreground: oklch(1 0 0);
 
-  /* Borders & inputs */
-  --color-border:              oklch(0.22 0.022 255);   /* #1E2A45 */
-  --color-input:               oklch(0.16 0.020 255);
-  --color-ring:                oklch(0.58 0.22 260);
+  /* ── Borders & inputs ───────────────────────────────────────────────────── */
+  --color-border:              oklch(0.88 0.008 255);    /* #D8DCE8 cool grey border */
+  --color-input:               oklch(0.97 0.004 250);
+  --color-ring:                oklch(0.42 0.18 265);
 
   /* ── Status colors ──────────────────────────────────────────────────────── */
   --color-status-draft:        oklch(0.50 0.010 240);
-  --color-status-analyzing:    oklch(0.68 0.18 255);
-  --color-status-complete:     oklch(0.65 0.16 200);
-  --color-status-pending:      oklch(0.72 0.18 75);
-  --color-status-approved:     oklch(0.65 0.18 145);
-  --color-status-rejected:     oklch(0.55 0.22 25);
+  --color-status-analyzing:    oklch(0.42 0.18 265);
+  --color-status-complete:     oklch(0.45 0.16 200);
+  --color-status-pending:      oklch(0.58 0.18 75);
+  --color-status-approved:     oklch(0.48 0.18 145);
+  --color-status-rejected:     oklch(0.52 0.22 25);
 
   /* ── Typography ─────────────────────────────────────────────────────────── */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-serif: "DM Serif Display", ui-serif, Georgia, serif;
+  --font-serif: "Georgia", ui-serif, serif;
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
   /* ── Shadows ────────────────────────────────────────────────────────────── */
-  --shadow-card: 0 1px 3px 0 oklch(0 0 0 / 0.4), 0 1px 2px -1px oklch(0 0 0 / 0.4);
-  --shadow-elevated: 0 4px 24px -4px oklch(0 0 0 / 0.5), 0 2px 8px -2px oklch(0 0 0 / 0.3);
-  --shadow-glow: 0 0 0 1px oklch(0.58 0.22 260 / 0.3), 0 4px 24px -4px oklch(0.58 0.22 260 / 0.15);
+  --shadow-card:    0 1px 3px 0 oklch(0.18 0.020 255 / 0.08), 0 1px 2px -1px oklch(0.18 0.020 255 / 0.06);
+  --shadow-elevated: 0 4px 16px -4px oklch(0.18 0.020 255 / 0.12), 0 2px 6px -2px oklch(0.18 0.020 255 / 0.08);
+  --shadow-focus:   0 0 0 3px oklch(0.42 0.18 265 / 0.20);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────────── */
@@ -90,13 +85,14 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
     letter-spacing: -0.02em;
+    color: oklch(0.18 0.020 255);
   }
 
   /* Scrollbar styling */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/30; }
+  ::-webkit-scrollbar-thumb { background: oklch(0.80 0.008 255); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.65 0.010 255); }
 }
 
 /* ─── Utilities ─────────────────────────────────────────────────────────────── */
@@ -119,59 +115,43 @@
     box-shadow: var(--shadow-elevated);
   }
 
-  /* ── Gradient accents ───────────────────────────────────────────────────── */
+  /* ── Primary gradient ───────────────────────────────────────────────────── */
   .gradient-primary {
-    background: linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280));
+    background: linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275));
   }
 
-  .gradient-surface {
-    background: linear-gradient(180deg,
-      oklch(0.14 0.022 255) 0%,
-      oklch(0.11 0.018 255) 100%);
-  }
+  /* ── Status badge variants (light theme) ────────────────────────────────── */
+  .status-draft             { background: oklch(0.92 0.006 255); color: oklch(0.40 0.010 255); border: 1px solid oklch(0.82 0.008 255); }
+  .status-analyzing         { background: oklch(0.92 0.012 265); color: oklch(0.38 0.16 265); border: 1px solid oklch(0.80 0.015 265); }
+  .status-analysis_complete { background: oklch(0.92 0.012 200); color: oklch(0.38 0.14 200); border: 1px solid oklch(0.80 0.015 200); }
+  .status-generating_drafts { background: oklch(0.93 0.012 280); color: oklch(0.40 0.16 280); border: 1px solid oklch(0.82 0.015 280); }
+  .status-pending_approval  { background: oklch(0.96 0.015 85);  color: oklch(0.48 0.16 75);  border: 1px solid oklch(0.86 0.018 85); }
+  .status-approved          { background: oklch(0.94 0.015 145); color: oklch(0.38 0.16 145); border: 1px solid oklch(0.82 0.018 145); }
+  .status-rejected          { background: oklch(0.94 0.015 25);  color: oklch(0.42 0.18 25);  border: 1px solid oklch(0.82 0.018 25); }
+  .status-routed_for_approval { background: oklch(0.93 0.012 220); color: oklch(0.38 0.14 220); border: 1px solid oklch(0.82 0.015 220); }
 
-  .text-gradient-primary {
-    background: linear-gradient(135deg, oklch(0.72 0.18 255), oklch(0.65 0.20 280));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+  /* ── Confidence badges (light theme) ────────────────────────────────────── */
+  .confidence-high   { background: oklch(0.94 0.015 145); color: oklch(0.38 0.16 145); border: 1px solid oklch(0.82 0.018 145); }
+  .confidence-medium { background: oklch(0.96 0.015 85);  color: oklch(0.48 0.16 75);  border: 1px solid oklch(0.86 0.018 85); }
+  .confidence-low    { background: oklch(0.94 0.015 25);  color: oklch(0.42 0.18 25);  border: 1px solid oklch(0.82 0.018 25); }
 
-  /* ── Status badge variants ──────────────────────────────────────────────── */
-  .status-draft           { @apply bg-slate-500/12 text-slate-400 border border-slate-500/20; }
-  .status-analyzing       { @apply bg-blue-500/12 text-blue-400 border border-blue-500/20; }
-  .status-analysis_complete { @apply bg-cyan-500/12 text-cyan-400 border border-cyan-500/20; }
-  .status-generating_drafts { @apply bg-violet-500/12 text-violet-400 border border-violet-500/20; }
-  .status-pending_approval  { @apply bg-amber-500/12 text-amber-400 border border-amber-500/20; }
-  .status-approved          { @apply bg-emerald-500/12 text-emerald-400 border border-emerald-500/20; }
-  .status-rejected          { @apply bg-red-500/12 text-red-400 border border-red-500/20; }
-  .status-routed_for_approval { @apply bg-sky-500/12 text-sky-400 border border-sky-500/20; }
-
-  /* ── Confidence badges ──────────────────────────────────────────────────── */
-  .confidence-high   { @apply bg-emerald-500/12 text-emerald-400 border border-emerald-500/20; }
-  .confidence-medium { @apply bg-amber-500/12 text-amber-400 border border-amber-500/20; }
-  .confidence-low    { @apply bg-red-500/12 text-red-400 border border-red-500/20; }
-
-  /* ── Category badges ────────────────────────────────────────────────────── */
-  .cat-operator    { @apply bg-blue-500/12 text-blue-400 border border-blue-500/20; }
-  .cat-engineering { @apply bg-violet-500/12 text-violet-400 border border-violet-500/20; }
-  .cat-safety      { @apply bg-red-500/12 text-red-400 border border-red-500/20; }
-  .cat-operations  { @apply bg-amber-500/12 text-amber-400 border border-amber-500/20; }
-  .cat-maintenance { @apply bg-emerald-500/12 text-emerald-400 border border-emerald-500/20; }
+  /* ── Category badges (light theme) ─────────────────────────────────────── */
+  .cat-operator    { background: oklch(0.92 0.012 265); color: oklch(0.38 0.16 265); border: 1px solid oklch(0.80 0.015 265); }
+  .cat-engineering { background: oklch(0.93 0.012 280); color: oklch(0.40 0.16 280); border: 1px solid oklch(0.82 0.015 280); }
+  .cat-safety      { background: oklch(0.94 0.015 25);  color: oklch(0.42 0.18 25);  border: 1px solid oklch(0.82 0.018 25); }
+  .cat-operations  { background: oklch(0.96 0.015 85);  color: oklch(0.48 0.16 75);  border: 1px solid oklch(0.86 0.018 85); }
+  .cat-maintenance { background: oklch(0.94 0.015 145); color: oklch(0.38 0.16 145); border: 1px solid oklch(0.82 0.018 145); }
 
   /* ── Sidebar specific ───────────────────────────────────────────────────── */
   .sidebar-item-active {
-    @apply bg-primary/10 text-primary border-l-2 border-primary;
-  }
-
-  /* ── Input focus glow ───────────────────────────────────────────────────── */
-  .input-glow:focus {
-    box-shadow: var(--shadow-glow);
+    background: oklch(0.92 0.012 265);
+    color: oklch(0.38 0.18 265);
+    border-left: 2px solid oklch(0.42 0.18 265);
   }
 
   /* ── Divider with label ─────────────────────────────────────────────────── */
   .divider-label {
-    @apply flex items-center gap-3 text-xs font-medium uppercase tracking-widest text-muted-foreground/50;
+    @apply flex items-center gap-3 text-xs font-medium uppercase tracking-widest text-muted-foreground/60;
   }
   .divider-label::before,
   .divider-label::after {
@@ -182,7 +162,7 @@
   /* ── Scrollbar thin ─────────────────────────────────────────────────────── */
   .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
   .scrollbar-thin::-webkit-scrollbar-track { @apply bg-muted; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: oklch(0.80 0.008 255); border-radius: 9999px; }
 
   /* ── Stat card number ───────────────────────────────────────────────────── */
   .stat-number {
@@ -190,15 +170,5 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.03em;
-  }
-
-  /* ── Noise texture overlay ──────────────────────────────────────────────── */
-  .noise-overlay::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    pointer-events: none;
-    border-radius: inherit;
   }
 }

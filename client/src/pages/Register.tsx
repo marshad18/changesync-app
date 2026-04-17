@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { useLocation, Link } from "wouter";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,6 @@ const BENEFITS = [
 ];
 
 export default function Register() {
-  const [, setLocation] = useLocation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,86 +52,59 @@ export default function Register() {
   const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
 
   return (
-    <div className="min-h-screen flex" style={{ background: "oklch(0.09 0.018 255)" }}>
-      {/* ── Left brand panel ─────────────────────────────────────────── */}
+    <div className="min-h-screen flex">
+
+      {/* ── Left brand panel — navy ──────────────────────────────────────── */}
       <div
         className="hidden lg:flex lg:w-[48%] flex-col justify-between p-12 relative overflow-hidden"
         style={{
-          background: "linear-gradient(145deg, oklch(0.12 0.030 260) 0%, oklch(0.09 0.018 255) 60%)",
-          borderRight: "1px solid oklch(0.22 0.022 255)",
+          background: "linear-gradient(160deg, oklch(0.28 0.060 265) 0%, oklch(0.20 0.040 260) 50%, oklch(0.16 0.030 255) 100%)",
         }}
       >
-        {/* Decorative grid */}
+        {/* Subtle dot grid */}
         <div
-          className="absolute inset-0 opacity-[0.04]"
+          className="absolute inset-0 opacity-[0.08]"
           style={{
-            backgroundImage:
-              "linear-gradient(oklch(0.94 0.008 240) 1px, transparent 1px), linear-gradient(90deg, oklch(0.94 0.008 240) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
+            backgroundImage: "radial-gradient(circle, oklch(1 0 0) 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
           }}
-        />
-        {/* Glow orbs */}
-        <div
-          className="absolute top-1/3 right-1/4 w-80 h-80 rounded-full opacity-10 blur-[80px]"
-          style={{ background: "oklch(0.58 0.22 260)" }}
-        />
-        <div
-          className="absolute bottom-1/4 left-1/4 w-56 h-56 rounded-full opacity-[0.06] blur-[60px]"
-          style={{ background: "oklch(0.65 0.18 145)" }}
         />
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
           <div
             className="h-10 w-10 rounded-xl flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
-              boxShadow: "0 4px 16px oklch(0.58 0.22 260 / 0.4)",
-            }}
+            style={{ background: "oklch(1 0 0 / 0.15)", border: "1px solid oklch(1 0 0 / 0.25)" }}
           >
             <GitBranch className="h-5 w-5 text-white" />
           </div>
           <div>
-            <p className="text-base font-bold tracking-tight text-foreground">ChangeSync</p>
-            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">Enterprise</p>
+            <p className="text-base font-bold tracking-tight text-white">ChangeSync</p>
+            <p className="text-[10px] text-white/50 uppercase tracking-widest">Enterprise</p>
           </div>
         </div>
 
         {/* Hero text */}
         <div className="relative z-10 space-y-8">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight leading-[1.15]" style={{ letterSpacing: "-0.03em" }}>
-              Start managing
+            <h1
+              className="text-4xl font-bold tracking-tight leading-[1.15] text-white"
+              style={{ letterSpacing: "-0.03em" }}
+            >
+              Join the future
               <br />
-              <span
-                style={{
-                  background: "linear-gradient(135deg, oklch(0.72 0.18 255), oklch(0.65 0.20 280))",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                changes smarter.
-              </span>
+              <span style={{ color: "oklch(0.82 0.12 200)" }}>of change management.</span>
             </h1>
-            <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-sm">
-              Join manufacturing teams at world-class organisations who use ChangeSync to eliminate documentation errors and accelerate change approvals.
+            <p className="mt-4 text-sm leading-relaxed max-w-sm" style={{ color: "oklch(1 0 0 / 0.65)" }}>
+              Set up your workspace in minutes and start managing engineering changes with AI precision.
             </p>
           </div>
 
           <div className="space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-widest mb-4">
-              What you get
-            </p>
-            {BENEFITS.map((b) => (
-              <div key={b} className="flex items-center gap-3">
-                <div
-                  className="h-5 w-5 rounded-full flex items-center justify-center shrink-0"
-                  style={{ background: "oklch(0.65 0.18 145 / 0.15)", border: "1px solid oklch(0.65 0.18 145 / 0.3)" }}
-                >
-                  <CheckCircle2 className="h-3 w-3" style={{ color: "oklch(0.65 0.18 145)" }} />
-                </div>
-                <p className="text-sm text-muted-foreground">{b}</p>
+            {BENEFITS.map((benefit) => (
+              <div key={benefit} className="flex items-center gap-3">
+                <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: "oklch(0.82 0.12 200)" }} />
+                <p className="text-sm" style={{ color: "oklch(1 0 0 / 0.75)" }}>{benefit}</p>
               </div>
             ))}
           </div>
@@ -140,33 +112,34 @@ export default function Register() {
 
         {/* Footer */}
         <div className="relative z-10">
-          <p className="text-[11px] text-muted-foreground/40">
+          <p className="text-[11px]" style={{ color: "oklch(1 0 0 / 0.35)" }}>
             © {new Date().getFullYear()} ChangeSync. Built for manufacturing excellence.
           </p>
         </div>
       </div>
 
-      {/* ── Right form panel ─────────────────────────────────────────── */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-[420px] space-y-7">
+      {/* ── Right form panel — white ─────────────────────────────────────── */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-background overflow-y-auto">
+        <div className="w-full max-w-[420px] space-y-7 py-8">
+
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-3">
             <div
               className="h-9 w-9 rounded-xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))" }}
+              style={{ background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))" }}
             >
               <GitBranch className="h-4 w-4 text-white" />
             </div>
-            <p className="text-base font-bold tracking-tight">ChangeSync</p>
+            <p className="text-base font-bold tracking-tight text-foreground">ChangeSync</p>
           </div>
 
           {/* Header */}
           <div>
-            <h2 className="text-2xl font-bold tracking-tight" style={{ letterSpacing: "-0.025em" }}>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground" style={{ letterSpacing: "-0.025em" }}>
               Create your account
             </h2>
             <p className="text-sm text-muted-foreground mt-1.5">
-              Get started with ChangeSync in seconds.
+              Set up your workspace and get started today.
             </p>
           </div>
 
@@ -183,8 +156,7 @@ export default function Register() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
-                className="h-11 text-sm"
-                style={{ background: "oklch(0.14 0.022 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                className="h-11 text-sm bg-card border-border text-foreground placeholder:text-muted-foreground/50"
               />
             </div>
 
@@ -199,80 +171,72 @@ export default function Register() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                className="h-11 text-sm"
-                style={{ background: "oklch(0.14 0.022 255)", border: "1px solid oklch(0.25 0.022 255)" }}
+                className="h-11 text-sm bg-card border-border text-foreground placeholder:text-muted-foreground/50"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Min. 8 chars"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                    className="h-11 text-sm pr-10"
-                    style={{ background: "oklch(0.14 0.022 255)", border: "1px solid oklch(0.25 0.022 255)" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Confirm
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirm ? "text" : "password"}
-                    placeholder="Re-enter"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    autoComplete="new-password"
-                    className="h-11 text-sm pr-10"
-                    style={{
-                      background: "oklch(0.14 0.022 255)",
-                      border: `1px solid ${!passwordsMatch ? "oklch(0.55 0.22 25)" : "oklch(0.25 0.022 255)"}`,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirm(!showConfirm)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showConfirm ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Min. 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="h-11 text-sm pr-10 bg-card border-border text-foreground placeholder:text-muted-foreground/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
-            {!passwordsMatch && (
-              <p className="text-xs" style={{ color: "oklch(0.65 0.20 25)" }}>
-                Passwords do not match
-              </p>
-            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="confirm" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Confirm password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="confirm"
+                  type={showConfirm ? "text" : "password"}
+                  placeholder="Repeat your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className={`h-11 text-sm pr-10 bg-card border-border text-foreground placeholder:text-muted-foreground/50 ${
+                    !passwordsMatch ? "border-destructive" : ""
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {!passwordsMatch && (
+                <p className="text-xs text-destructive">Passwords do not match.</p>
+              )}
+            </div>
 
             <Button
               type="submit"
               size="lg"
-              className="w-full gap-2 font-semibold h-11 mt-2"
+              className="w-full gap-2 font-semibold h-11 text-white mt-2"
               disabled={registerMutation.isPending || !passwordsMatch}
               style={{
-                background: "linear-gradient(135deg, oklch(0.58 0.22 260), oklch(0.52 0.20 280))",
+                background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
                 border: "none",
-                boxShadow: "0 4px 16px oklch(0.58 0.22 260 / 0.3)",
+                boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
               }}
             >
               {registerMutation.isPending ? (
@@ -291,15 +255,15 @@ export default function Register() {
 
           {/* Divider */}
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-px" style={{ background: "oklch(0.22 0.022 255)" }} />
-            <span className="text-[11px] text-muted-foreground/50 uppercase tracking-wider">or</span>
-            <div className="flex-1 h-px" style={{ background: "oklch(0.22 0.022 255)" }} />
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-[11px] text-muted-foreground uppercase tracking-wider">or</span>
+            <div className="flex-1 h-px bg-border" />
           </div>
 
           {/* Login link */}
           <p className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="text-primary hover:text-primary/80 font-semibold transition-colors">
+            <Link href="/login" className="font-semibold transition-colors" style={{ color: "oklch(0.42 0.18 265)" }}>
               Sign in
             </Link>
           </p>
