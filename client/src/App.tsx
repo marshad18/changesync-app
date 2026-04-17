@@ -14,6 +14,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import UserManagement from "./pages/UserManagement";
 
 // Public auth routes — rendered without DashboardLayout
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/changes/:id" component={ChangeDetail} />
         <Route path="/documents" component={DocumentLibrary} />
         <Route path="/drafts/:id" component={DraftReview} />
+        <Route path="/admin/users" component={UserManagement} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

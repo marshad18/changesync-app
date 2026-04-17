@@ -123,9 +123,9 @@
 
 ## User Management & Login Fix (April 2026)
 - [x] Reset password for marshad@mba2027.hbs.edu so user can log in
-- [ ] Add admin User Management page: list all registered users with email, name, role, registration date
-- [ ] Add ability for admin to change user role (user → admin)
-- [ ] Add ability for admin to reset a user's password
+- [x] Add admin User Management page: list all registered users with email, name, role, registration date
+- [x] Add ability for admin to change user role (user → admin)
+- [x] Add ability for admin to reset a user's password
 
 ## Progress Timeline / Stepper (April 2026)
 - [x] Build shared ChangeProgressStepper component with 4 steps: Create Change → Impact Analysis → Generate Drafts → Review & Approve

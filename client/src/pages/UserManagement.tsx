@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Users, Shield, UserCog, KeyRound, Mail, Clock, Search } from "lucide-react";
 
 type UserRow = {
@@ -38,7 +38,6 @@ type UserRow = {
 export default function UserManagement() {
   const { user: currentUser } = useAuth();
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const utils = trpc.useUtils();
 
   const [search, setSearch] = useState("");
@@ -54,21 +53,21 @@ export default function UserManagement() {
 
   const updateRoleMutation = trpc.admin.updateUserRole.useMutation({
     onSuccess: () => {
-      toast({ title: "Role updated", description: `${roleDialogUser?.email} is now ${newRole}.` });
+      toast.success(`Role updated — ${roleDialogUser?.email} is now ${newRole}.`);
       utils.admin.listUsers.invalidate();
       setRoleDialogUser(null);
     },
-    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err) => toast.error(err.message),
   });
 
   const resetPasswordMutation = trpc.admin.resetUserPassword.useMutation({
     onSuccess: () => {
-      toast({ title: "Password reset", description: `Password updated for ${passwordDialogUser?.email}.` });
+      toast.success(`Password updated for ${passwordDialogUser?.email}.`);
       setPasswordDialogUser(null);
       setNewPassword("");
       setConfirmPassword("");
     },
-    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err) => toast.error(err.message),
   });
 
   if (currentUser?.role !== "admin") {
@@ -303,11 +302,11 @@ export default function UserManagement() {
               onClick={() => {
                 if (!passwordDialogUser) return;
                 if (newPassword.length < 8) {
-                  toast({ title: "Too short", description: "Password must be at least 8 characters.", variant: "destructive" });
+                  toast.error("Password must be at least 8 characters.");
                   return;
                 }
                 if (newPassword !== confirmPassword) {
-                  toast({ title: "Mismatch", description: "Passwords do not match.", variant: "destructive" });
+                  toast.error("Passwords do not match.");
                   return;
                 }
                 resetPasswordMutation.mutate({ userId: passwordDialogUser.id, newPassword });
