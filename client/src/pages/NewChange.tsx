@@ -8,9 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   ArrowLeft, ArrowRight, Upload, X, CheckCircle2, Loader2,
-  FileText, Weight, DollarSign, ChevronDown,
+  FileText, Weight, DollarSign, ChevronDown, Camera, ImageIcon,
 } from "lucide-react";
 import ChangeProgressStepper from "@/components/ChangeProgressStepper";
+import WebcamCapture from "@/components/WebcamCapture";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,12 @@ export default function NewChange() {
   const [newFile, setNewFile] = useState<File | null>(null);
   const oldFileRef = useRef<HTMLInputElement>(null);
   const newFileRef = useRef<HTMLInputElement>(null);
+
+  // Webcam state — which slot is currently open ("old" | "new" | null)
+  const [webcamSlot, setWebcamSlot] = useState<"old" | "new" | null>(null);
+  // Input mode per slot: "upload" or "camera"
+  const [oldInputMode, setOldInputMode] = useState<"upload" | "camera">("upload");
+  const [newInputMode, setNewInputMode] = useState<"upload" | "camera">("upload");
 
   // Weight / Price change fields
   const [oldValue, setOldValue] = useState("");
@@ -278,23 +285,77 @@ export default function NewChange() {
               </div>
             </div>
 
-            {/* Old file upload */}
+            {/* Old part slot */}
             <div className="space-y-2">
-              <Label>
-                Old {subTypeLabel} <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label>
+                  Old {subTypeLabel} <span className="text-destructive">*</span>
+                </Label>
+                {/* Mode toggle */}
+                {!oldFile && webcamSlot !== "old" && (
+                  <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+                    <button
+                      onClick={() => setOldInputMode("upload")}
+                      className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+                        oldInputMode === "upload"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Upload className="h-3 w-3" /> Upload
+                    </button>
+                    <button
+                      onClick={() => setOldInputMode("camera")}
+                      className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+                        oldInputMode === "camera"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Camera className="h-3 w-3" /> Camera
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* File already selected */}
               {oldFile ? (
                 <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
-                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  {oldFile.type.startsWith("image/") ? (
+                    <img
+                      src={URL.createObjectURL(oldFile)}
+                      alt="Old part"
+                      className="h-12 w-12 rounded object-cover shrink-0 border border-border"
+                    />
+                  ) : (
+                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  )}
                   <span className="text-sm text-foreground flex-1 truncate">{oldFile.name}</span>
                   <button
-                    onClick={() => setOldFile(null)}
+                    onClick={() => { setOldFile(null); setOldInputMode("upload"); }}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
+              ) : webcamSlot === "old" ? (
+                /* Webcam open for old slot */
+                <WebcamCapture
+                  label={`Old ${subTypeLabel}`}
+                  onCapture={(file) => { setOldFile(file); setWebcamSlot(null); }}
+                  onCancel={() => { setWebcamSlot(null); setOldInputMode("upload"); }}
+                />
+              ) : oldInputMode === "camera" ? (
+                /* Camera mode — show open camera button */
+                <button
+                  onClick={() => setWebcamSlot("old")}
+                  className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-primary/40 rounded-xl text-sm text-primary hover:border-primary hover:bg-primary/5 transition-all"
+                >
+                  <Camera className="h-4 w-4" />
+                  Open camera to photograph old {subTypeLabel.toLowerCase()}
+                </button>
               ) : (
+                /* Upload mode */
                 <button
                   onClick={() => oldFileRef.current?.click()}
                   className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"
@@ -316,23 +377,77 @@ export default function NewChange() {
               />
             </div>
 
-            {/* New file upload */}
+            {/* New part slot */}
             <div className="space-y-2">
-              <Label>
-                New {subTypeLabel} <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label>
+                  New {subTypeLabel} <span className="text-destructive">*</span>
+                </Label>
+                {/* Mode toggle */}
+                {!newFile && webcamSlot !== "new" && (
+                  <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+                    <button
+                      onClick={() => setNewInputMode("upload")}
+                      className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+                        newInputMode === "upload"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Upload className="h-3 w-3" /> Upload
+                    </button>
+                    <button
+                      onClick={() => setNewInputMode("camera")}
+                      className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+                        newInputMode === "camera"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Camera className="h-3 w-3" /> Camera
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* File already selected */}
               {newFile ? (
                 <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
-                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  {newFile.type.startsWith("image/") ? (
+                    <img
+                      src={URL.createObjectURL(newFile)}
+                      alt="New part"
+                      className="h-12 w-12 rounded object-cover shrink-0 border border-border"
+                    />
+                  ) : (
+                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  )}
                   <span className="text-sm text-foreground flex-1 truncate">{newFile.name}</span>
                   <button
-                    onClick={() => setNewFile(null)}
+                    onClick={() => { setNewFile(null); setNewInputMode("upload"); }}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
+              ) : webcamSlot === "new" ? (
+                /* Webcam open for new slot */
+                <WebcamCapture
+                  label={`New ${subTypeLabel}`}
+                  onCapture={(file) => { setNewFile(file); setWebcamSlot(null); }}
+                  onCancel={() => { setWebcamSlot(null); setNewInputMode("upload"); }}
+                />
+              ) : newInputMode === "camera" ? (
+                /* Camera mode — show open camera button */
+                <button
+                  onClick={() => setWebcamSlot("new")}
+                  className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-primary/40 rounded-xl text-sm text-primary hover:border-primary hover:bg-primary/5 transition-all"
+                >
+                  <Camera className="h-4 w-4" />
+                  Open camera to photograph new {subTypeLabel.toLowerCase()}
+                </button>
               ) : (
+                /* Upload mode */
                 <button
                   onClick={() => newFileRef.current?.click()}
                   className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"

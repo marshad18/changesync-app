@@ -133,3 +133,10 @@
 - [x] Add stepper to ChangeDetail.tsx impact analysis page (Step 2 active, Step 1 complete)
 - [x] Add stepper to DraftReview.tsx review page (Step 4 active, Steps 1-3 complete)
 - [x] Stepper shows completed steps in green, current step highlighted, future steps greyed out
+
+## Webcam Capture for Part Change (April 2026)
+- [x] Build WebcamCapture component: opens camera stream, shows live preview, capture button takes a still photo, retake option
+- [x] Add input mode toggle to Part Change form: "Upload File" vs "Take Photo" for both old and new part slots
+- [x] On capture, convert canvas snapshot to a File/Blob and store it the same way as an uploaded file (S3 upload)
+- [x] Show thumbnail preview of captured photo with retake button
+- [x] Handle browser permission denial gracefully with a clear error message
