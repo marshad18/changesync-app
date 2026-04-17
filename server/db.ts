@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -143,11 +143,37 @@ export async function getUserById(id: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function listUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+    role: users.role,
+    loginMethod: users.loginMethod,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).orderBy(desc(users.createdAt));
+  return result;
+}
+
+export async function updateUserRole(userId: number, role: 'user' | 'admin') {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
+export async function adminResetUserPassword(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.update(users).set({ passwordHash, passwordResetToken: null, passwordResetExpiry: null }).where(eq(users.id, userId));
+}
+
 // TODO: add feature queries here as your schema grows.
 
 // ─── Change Events ────────────────────────────────────────────────────────────
 
-import { desc } from "drizzle-orm";
 import {
   changeEvents, changeAssets, skuChanges, documents, impactAnalyses, documentDrafts,
   InsertChangeEvent, InsertChangeAsset, InsertSkuChange, InsertDocument,

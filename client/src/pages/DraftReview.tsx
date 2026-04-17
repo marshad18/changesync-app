@@ -12,6 +12,7 @@ import {
   FileText, Edit3, Eye, Save, Columns2, LayoutTemplate, Send,
   User,
 } from "lucide-react";
+import ChangeProgressStepper from "@/components/ChangeProgressStepper";
 
 export default function DraftReview() {
   const params = useParams<{ id: string }>();
@@ -125,6 +126,12 @@ export default function DraftReview() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+
+      {/* ── Progress Stepper ── */}
+      <ChangeProgressStepper
+        currentStep={4}
+        completedSteps={[1, 2, 3]}
+      />
 
       {/* ── Header ── */}
       <div className="flex items-start gap-4">

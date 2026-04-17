@@ -17,6 +17,7 @@ import {
   createImpactAnalysis, getImpactAnalysesByEventId, updateImpactAnalysisStatus, deleteImpactAnalysesByEventId,
   createDocumentDraft, getDraftsByEventId, getDraftById, updateDraftStatus, updateDraftContent,
   getUserByEmail, createEmailUser, updateUserPasswordHash, setPasswordResetToken, getUserByResetToken, updateUserLastSignedIn,
+  listUsers, updateUserRole, adminResetUserPassword,
 } from "./db";
 
 function randomSuffix() { return Math.random().toString(36).substring(2, 10); }
@@ -330,6 +331,31 @@ export const appRouter = router({
       }
 
       return { results, imported: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length };
+    }),
+  }),
+
+  admin: router({
+    listUsers: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new Error('Forbidden');
+      return listUsers();
+    }),
+    updateUserRole: protectedProcedure.input(z.object({
+      userId: z.number(),
+      role: z.enum(['user', 'admin']),
+    })).mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== 'admin') throw new Error('Forbidden');
+      if (input.userId === ctx.user.id) throw new Error('You cannot change your own role.');
+      await updateUserRole(input.userId, input.role);
+      return { success: true };
+    }),
+    resetUserPassword: protectedProcedure.input(z.object({
+      userId: z.number(),
+      newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    })).mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== 'admin') throw new Error('Forbidden');
+      const passwordHash = await bcrypt.hash(input.newPassword, 12);
+      await adminResetUserPassword(input.userId, passwordHash);
+      return { success: true };
     }),
   }),
 

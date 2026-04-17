@@ -10,6 +10,7 @@ import {
   ArrowLeft, ArrowRight, Upload, X, CheckCircle2, Loader2,
   FileText, Weight, DollarSign, ChevronDown,
 } from "lucide-react";
+import ChangeProgressStepper from "@/components/ChangeProgressStepper";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,11 @@ export default function NewChange() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
+      {/* Progress Stepper */}
+      <div className="mb-8">
+        <ChangeProgressStepper currentStep={1} />
+      </div>
+
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
         <button

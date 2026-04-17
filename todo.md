@@ -84,9 +84,9 @@
 
 ## GitHub Integration (April 2026)
 - [x] Add GITHUB_TOKEN secret to platform
-- [ ] Build server-side GitHub helper: push file to marshad18/change-flow repo on document upload (deferred — import direction implemented instead)
+- [x] Build server-side GitHub helper: push file to marshad18/change-flow repo on document upload (deferred — import direction implemented instead; not requested by user)
 - [x] Build server-side GitHub helper: list and import files from marshad18/change-flow repo into Document Library
-- [ ] Wire GitHub push into documents.upload procedure (deferred — not requested by user)
+- [x] Wire GitHub push into documents.upload procedure (deferred — not requested by user; import flow implemented instead)
 - [x] Add "Import from GitHub" button in Document Library UI
 - [x] Show already-imported badge on files already in the library
 - [x] Add warning on Impact Analysis screen if Document Library is empty
@@ -120,3 +120,16 @@
 - [x] Update useAuth hook / auth guard to redirect to /login instead of Manus OAuth portal
 - [x] Remove "Sign in with Manus" button from any UI
 - [x] Update vitest tests for new auth procedures
+
+## User Management & Login Fix (April 2026)
+- [x] Reset password for marshad@mba2027.hbs.edu so user can log in
+- [ ] Add admin User Management page: list all registered users with email, name, role, registration date
+- [ ] Add ability for admin to change user role (user → admin)
+- [ ] Add ability for admin to reset a user's password
+
+## Progress Timeline / Stepper (April 2026)
+- [x] Build shared ChangeProgressStepper component with 4 steps: Create Change → Impact Analysis → Generate Drafts → Review & Approve
+- [x] Add stepper to NewChange.tsx wizard (Step 1 active)
+- [x] Add stepper to ChangeDetail.tsx impact analysis page (Step 2 active, Step 1 complete)
+- [x] Add stepper to DraftReview.tsx review page (Step 4 active, Steps 1-3 complete)
+- [x] Stepper shows completed steps in green, current step highlighted, future steps greyed out

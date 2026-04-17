@@ -8,6 +8,7 @@ import {
   Eye, AlertTriangle, Clock, Weight, DollarSign, Package, Send,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
+import ChangeProgressStepper, { WorkflowStep } from "@/components/ChangeProgressStepper";
 
 // ─── Labels & helpers ─────────────────────────────────────────────────────────
 
@@ -116,8 +117,24 @@ export default function ChangeDetail() {
   const isAnalyzing = analyzeMutation.isPending || status === "analyzing";
   const isGenerating = generateMutation.isPending || status === "generating_drafts";
 
+  // Determine stepper position based on event status
+  const stepperStep: WorkflowStep =
+    status === "draft" ? 2
+    : status === "analyzing" || status === "analysis_complete" ? 2
+    : status === "generating_drafts" ? 3
+    : drafts.length > 0 ? 4
+    : 2;
+
+  const completedSteps: WorkflowStep[] = [];
+  if (["analysis_complete", "generating_drafts", "pending_approval", "approved", "rejected"].includes(status)) completedSteps.push(1);
+  if (["generating_drafts", "pending_approval", "approved", "rejected"].includes(status) || drafts.length > 0) completedSteps.push(2);
+  if (drafts.length > 0 && ["pending_approval", "approved", "rejected"].includes(status)) completedSteps.push(3);
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
+
+      {/* ── Progress Stepper ── */}
+      <ChangeProgressStepper currentStep={stepperStep} completedSteps={completedSteps} />
 
       {/* ── Header ── */}
       <div className="flex items-start gap-4">
