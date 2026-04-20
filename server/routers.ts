@@ -8,6 +8,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
 import { modifyDocument, extractDocumentContent } from "./documentModifier";
+import { compareManuals, extractFileText } from "./manualComparison";
 import { listGitHubSampleDocs, downloadGitHubFile } from "./github";
 import { sdk } from "./_core/sdk";
 import {
@@ -229,6 +230,37 @@ export const appRouter = router({
       } else if (event.changeType === "price_change") {
         changeContext = `Price Change. Parameter changes: ${skuSummary}.`;
       }
+      // --- Step 0: If old and new manuals are uploaded, compare them to get a precise diff ---
+      // This is the primary source of truth for what changed.
+      // All affected Document Library files will be modified using this diff.
+      let manualDiff: Array<{ fieldName: string; oldValue: string; newValue: string; unit?: string }> = [];
+      try {
+        const assets = await getChangeAssetsByEventId(input.changeEventId);
+        const oldManualAsset = assets.find(a => a.assetType === "manual_old" || a.assetType === "drawing_old");
+        const newManualAsset = assets.find(a => a.assetType === "manual_new" || a.assetType === "drawing_new");
+        if (oldManualAsset?.fileUrl && newManualAsset?.fileUrl) {
+          console.log(`[ManualComparison] Comparing old manual (${oldManualAsset.fileName}) with new manual (${newManualAsset.fileName})`);
+          const [oldText, newText] = await Promise.all([
+            extractFileText(oldManualAsset.fileUrl, oldManualAsset.fileName),
+            extractFileText(newManualAsset.fileUrl, newManualAsset.fileName),
+          ]);
+          manualDiff = await compareManuals({
+            oldManualText: oldText,
+            newManualText: newText,
+            oldFileName: oldManualAsset.fileName,
+            newFileName: newManualAsset.fileName,
+            changeEventTitle: event.title,
+          });
+          console.log(`[ManualComparison] Found ${manualDiff.length} changes from manual comparison:`,
+            manualDiff.map(c => `${c.fieldName}: "${c.oldValue}" → "${c.newValue}"`).join(", ")
+          );
+        } else {
+          console.log(`[ManualComparison] No old/new manual assets found — will fall back to document content analysis`);
+        }
+      } catch (manualErr) {
+        console.warn(`[ManualComparison] Failed to compare manuals:`, manualErr);
+      }
+
       let draftsCreated = 0;
       for (const analysis of impactedAnalyses) {
         const doc = await getDocumentById(analysis.documentId);
@@ -248,100 +280,102 @@ export const appRouter = router({
             const allDrafts = await getDraftsByEventId(input.changeEventId);
             const latestDraft = allDrafts[allDrafts.length - 1];
             if (latestDraft) {
-              // Extract readable content from the actual document
-              let docContent = "";
-              try {
-                docContent = await extractDocumentContent({
-                  fileUrl: doc.fileUrl,
-                  fileName: doc.fileName,
-                  mimeType: doc.mimeType ?? "application/octet-stream",
-                });
-              } catch (extractErr) {
-                console.warn(`[DocumentModifier] Could not extract content from ${doc.name}:`, extractErr);
-              }
+              let changesToApply: Array<{ fieldName: string; oldValue: string; newValue: string; unit?: string }> = [];
 
-              // Ask the LLM to identify specific cell-level changes in this document
-              const changeExtractionPrompt = `You are an expert manufacturing documentation analyst. Your job is to identify SPECIFIC values in a document that need to be updated based on an engineering change event.
+              if (manualDiff.length > 0) {
+                // PRIMARY PATH: Use the diff extracted from the uploaded old/new manuals.
+                // These are the most accurate changes — taken directly from the actual documents.
+                // Filter to changes that are relevant to this specific document category.
+                changesToApply = manualDiff;
+                console.log(`[DocumentModifier] Using ${changesToApply.length} manual-diff changes for ${doc.name}`);
+              } else {
+                // FALLBACK PATH: No manuals uploaded. Extract the document content and ask the
+                // LLM to identify which values in THIS document need updating based on the
+                // change event parameters (SKU changes, text notes, etc.).
+                let docContent = "";
+                try {
+                  docContent = await extractDocumentContent({
+                    fileUrl: doc.fileUrl,
+                    fileName: doc.fileName,
+                    mimeType: doc.mimeType ?? "application/octet-stream",
+                  });
+                } catch (extractErr) {
+                  console.warn(`[DocumentModifier] Could not extract content from ${doc.name}:`, extractErr);
+                }
 
-ENGINEERING CHANGE EVENT:
-- Title: ${event.title}
-- Change Type: ${changeTypeLabel}
-- Change Context: ${changeContext || "Standard engineering change"}
-- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}
-- Affected SKU: ${event.affectedSku ?? "Not specified"}
-- Text Notes: ${event.textNotes ?? "None"}
-- Parameter Changes from change form: ${skuSummary}
+                const changeExtractionPrompt = `You are an expert manufacturing documentation analyst. Identify SPECIFIC values in this document that need updating.
 
-DOCUMENT BEING UPDATED:
-- Name: ${doc.name}
-- Code: ${doc.code ?? "N/A"}
-- Category: ${doc.category ?? "Unknown"}
-- Impacted Sections: ${analysis.impactedSections ?? "All sections"}
-- Impact Reasoning: ${analysis.reasoning}
+CHANGE EVENT: ${event.title} (${changeTypeLabel})
+Equipment: ${event.affectedEquipment ?? "Not specified"}
+Notes: ${event.textNotes ?? "None"}
+Parameter Changes: ${skuSummary}
 
-ACTUAL DOCUMENT CONTENT:
-${docContent || "(Content not available — use change event parameters to infer what needs changing)"}
+DOCUMENT: ${doc.name} (${doc.category ?? "Unknown"} category)
+Impacted Sections: ${analysis.impactedSections ?? "All sections"}
+Reasoning: ${analysis.reasoning}
 
-INSTRUCTIONS:
-Based on the document content above and the engineering change event, identify EVERY specific value in this document that needs to be updated. For each change:
-- oldValue: the EXACT text/number currently in the document (copy it verbatim from the document content above)
-- newValue: what it should be changed to
-- fieldName: a short label describing what this field is (e.g. "Motor Power", "Lubrication Frequency", "RPM")
-- unit: the unit of measurement if applicable (e.g. "kW", "RPM", "Nm") — omit if not applicable
+DOCUMENT CONTENT:
+${docContent || "(Not available — use parameter changes from the change event)"}
 
-Only include changes where you can identify the EXACT old value from the document content. Do not invent values that are not in the document. If the document content is not available, use the parameter changes from the change form.
+For each value that needs changing, return:
+- fieldName: short label (e.g. "Motor Power", "Lubrication Frequency")
+- oldValue: EXACT text as it appears in the document
+- newValue: the replacement value
+- unit: unit of measurement (e.g. "kW") or empty string
 
-Return a JSON object with a "changes" array.`;
+Only return changes where you found the exact old value in the document content. Return a JSON object with a "changes" array.`;
 
-              const changeExtractionResponse = await invokeLLM({
-                messages: [
-                  { role: "system", content: "You are an expert manufacturing documentation analyst. Always respond with valid JSON only." },
-                  { role: "user", content: changeExtractionPrompt },
-                ],
-                response_format: {
-                  type: "json_schema",
-                  json_schema: {
-                    name: "document_changes",
-                    strict: true,
-                    schema: {
-                      type: "object",
-                      properties: {
-                        changes: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            properties: {
-                              fieldName: { type: "string" },
-                              oldValue: { type: "string" },
-                              newValue: { type: "string" },
-                              unit: { type: "string" },
+                const changeExtractionResponse = await invokeLLM({
+                  messages: [
+                    { role: "system", content: "You are an expert manufacturing documentation analyst. Always respond with valid JSON only." },
+                    { role: "user", content: changeExtractionPrompt },
+                  ],
+                  response_format: {
+                    type: "json_schema",
+                    json_schema: {
+                      name: "document_changes",
+                      strict: true,
+                      schema: {
+                        type: "object",
+                        properties: {
+                          changes: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: {
+                                fieldName: { type: "string" },
+                                oldValue: { type: "string" },
+                                newValue: { type: "string" },
+                                unit: { type: "string" },
+                              },
+                              required: ["fieldName", "oldValue", "newValue", "unit"],
+                              additionalProperties: false,
                             },
-                            required: ["fieldName", "oldValue", "newValue", "unit"],
-                            additionalProperties: false,
                           },
                         },
+                        required: ["changes"],
+                        additionalProperties: false,
                       },
-                      required: ["changes"],
-                      additionalProperties: false,
                     },
                   },
-                },
-              });
+                });
 
-              let llmChanges: Array<{ fieldName: string; oldValue: string; newValue: string; unit: string }> = [];
-              try {
-                const parsed = JSON.parse(String(changeExtractionResponse.choices[0]?.message?.content ?? "{}")) as { changes: typeof llmChanges };
-                llmChanges = (parsed.changes ?? []).filter(c => c.oldValue && c.newValue && c.oldValue !== c.newValue);
-              } catch (parseErr) {
-                console.warn(`[DocumentModifier] Failed to parse LLM change extraction for ${doc.name}:`, parseErr);
+                let llmChanges: Array<{ fieldName: string; oldValue: string; newValue: string; unit: string }> = [];
+                try {
+                  const parsed = JSON.parse(String(changeExtractionResponse.choices[0]?.message?.content ?? "{}")) as { changes: typeof llmChanges };
+                  llmChanges = (parsed.changes ?? []).filter(c => c.oldValue && c.newValue && c.oldValue !== c.newValue);
+                } catch (parseErr) {
+                  console.warn(`[DocumentModifier] Failed to parse LLM change extraction for ${doc.name}:`, parseErr);
+                }
+
+                // Last resort: use SKU params directly
+                changesToApply = llmChanges.length > 0
+                  ? llmChanges.map(c => ({ fieldName: c.fieldName, oldValue: c.oldValue, newValue: c.newValue, unit: c.unit || undefined }))
+                  : skus.map(s => ({ fieldName: s.fieldName, oldValue: s.oldValue ?? "", newValue: s.newValue ?? "", unit: s.unit ?? undefined }));
               }
 
-              // Fall back to SKU params if LLM returned nothing
-              const changesToApply = llmChanges.length > 0
-                ? llmChanges.map(c => ({ fieldName: c.fieldName, oldValue: c.oldValue, newValue: c.newValue, unit: c.unit || undefined }))
-                : skus.map(s => ({ fieldName: s.fieldName, oldValue: s.oldValue ?? "", newValue: s.newValue ?? "", unit: s.unit ?? undefined }));
-
-              console.log(`[DocumentModifier] Applying ${changesToApply.length} LLM-identified changes to ${doc.name}:`, changesToApply.map(c => `${c.fieldName}: ${c.oldValue} → ${c.newValue}`));
+              console.log(`[DocumentModifier] Applying ${changesToApply.length} changes to ${doc.name}:`,
+                changesToApply.map(c => `${c.fieldName}: "${c.oldValue}" → "${c.newValue}"`).join(", "));
 
               const modResult = await modifyDocument({
                 fileUrl: doc.fileUrl,

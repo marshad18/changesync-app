@@ -216,4 +216,14 @@
 - [x] Update vitest tests to mock the new LLM call for document-specific change extraction
 
 ## PDF Text Extraction (Future)
-- [ ] Add real PDF text extraction (e.g. pdf-parse npm package) so the LLM can read actual PDF cell values, not just page count
+- [x] Add real PDF text extraction (e.g. pdf-parse npm package) so the LLM can read actual PDF cell values, not just page count
+
+## High-Quality Document Modification Engine (Apr 20)
+- [x] Manual comparison: when old+new manuals are uploaded in a Part Change, LLM reads both and extracts a structured diff (fieldName, oldValue, newValue, unit)
+- [x] Use that diff as the source of truth for ALL document modifications — not SKU params
+- [x] Excel modifier: use ExcelJS to preserve 100% of original formatting, only change specific cells that match old values, highlight changed cells in yellow (#FFFF00)
+- [x] PDF modifier: replace text values in PDF using pdf-lib, add a minimal "MODIFIED" stamp — do not add banner pages
+- [x] Modified document must look identical to the original except for the highlighted changed values
+- [x] Both panels in DraftReview: left = original file rendered inline, right = modified file rendered inline with yellow highlights visible
+- [x] Change log table below right panel: fieldName | oldValue | newValue for every change made
+- [x] Update tests for the new manual comparison + ExcelJS modifier flow

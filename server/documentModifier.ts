@@ -3,10 +3,13 @@
  *
  * Downloads an original document (Excel or PDF) from S3/URL,
  * applies AI-identified value changes to the actual file content,
- * highlights changed cells/sections, uploads the modified file to S3,
- * and returns the new URL plus a structured change log.
+ * highlights changed cells in yellow (Excel) or adds a change summary (PDF),
+ * uploads the modified file to S3, and returns the new URL plus a change log.
+ *
+ * Uses ExcelJS for Excel files to preserve 100% of original formatting.
  */
 
+import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { storagePut } from "./storage";
@@ -49,7 +52,7 @@ async function downloadFile(url: string): Promise<Buffer> {
 }
 
 /**
- * Normalize a value string for comparison (trim, lowercase, remove units).
+ * Normalize a cell value for comparison — trim, lowercase, collapse whitespace.
  */
 function normalizeValue(val: string): string {
   return String(val).trim().toLowerCase().replace(/\s+/g, " ");
@@ -57,114 +60,138 @@ function normalizeValue(val: string): string {
 
 /**
  * Check if a cell value matches an old value from the change list.
+ * Supports exact match, substring match (for longer descriptions), and numeric match.
  */
 function matchesOldValue(cellStr: string, oldValue: string): boolean {
+  if (!oldValue || oldValue.trim() === "") return false;
   const cell = normalizeValue(cellStr);
   const old = normalizeValue(oldValue);
+
   // Exact match
   if (cell === old) return true;
-  // Cell contains the old value as a substring (e.g. "1.5 kW" in a longer description)
-  if (cell.includes(old) && old.length > 2) return true;
-  // Numeric match (e.g. "1.5" matches "1.5 kW")
+
+  // Cell contains the old value as a whole word/phrase
+  // (e.g. "1.5 kW" in "Motor rated at 1.5 kW")
+  if (old.length >= 3 && cell.includes(old)) return true;
+
+  // Numeric match — "1.5" matches "1.5 kW", "1440" matches "1440 rpm"
   const numOld = parseFloat(old);
   const numCell = parseFloat(cell);
-  if (!isNaN(numOld) && !isNaN(numCell) && numOld === numCell) return true;
+  if (!isNaN(numOld) && !isNaN(numCell) && numOld === numCell && old.length >= 1) return true;
+
   return false;
 }
 
 /**
- * Modify an Excel workbook: find cells matching old values and replace with new values.
- * Changed cells are highlighted with a yellow fill.
+ * Build the replacement value string.
+ * If the cell contained more than just the old value (e.g. "Motor: 1.5 kW"),
+ * do a string replacement to preserve the surrounding text.
  */
-function modifyExcel(
+function buildNewValue(
+  originalCellValue: string | number | boolean | Date | null,
+  oldValue: string,
+  newValue: string,
+  unit?: string
+): string | number {
+  if (originalCellValue === null || originalCellValue === undefined) return newValue;
+
+  const cellStr = String(originalCellValue);
+  const unitSuffix = unit ? ` ${unit}` : "";
+
+  // If the cell is purely the old value (or a number matching it), return the new value directly
+  if (normalizeValue(cellStr) === normalizeValue(oldValue)) {
+    // Try to preserve numeric type
+    const parsed = parseFloat(newValue);
+    if (typeof originalCellValue === "number" && !isNaN(parsed)) {
+      return parsed;
+    }
+    return newValue + unitSuffix;
+  }
+
+  // Otherwise do a substring replacement to preserve surrounding text
+  const regex = new RegExp(oldValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  return cellStr.replace(regex, newValue + unitSuffix);
+}
+
+/**
+ * Modify an Excel workbook using ExcelJS to preserve ALL original formatting.
+ * Only cells matching old values are changed — everything else is untouched.
+ * Changed cells are highlighted with a bright yellow fill (#FFFF00).
+ */
+async function modifyExcel(
   buffer: Buffer,
   changes: ChangeEntry[]
-): { buffer: Buffer; changeLog: CellChange[] } {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellStyles: true });
+): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+
   const changeLog: CellChange[] = [];
 
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
+  for (const worksheet of workbook.worksheets) {
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const cellValue = cell.value;
+        if (cellValue === null || cellValue === undefined) return;
 
-    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
-
-    for (let row = range.s.r; row <= range.e.r; row++) {
-      for (let col = range.s.c; col <= range.e.c; col++) {
-        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-        const cell = sheet[cellRef];
-        if (!cell || cell.v === undefined || cell.v === null) continue;
-
-        const cellStr = String(cell.v);
+        // Handle rich text cells
+        let cellStr: string;
+        if (typeof cellValue === "object" && "richText" in (cellValue as object)) {
+          cellStr = (cellValue as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("");
+        } else if (cellValue instanceof Date) {
+          cellStr = cellValue.toISOString();
+        } else {
+          cellStr = String(cellValue);
+        }
 
         for (const change of changes) {
           if (!change.oldValue || !change.newValue) continue;
           if (matchesOldValue(cellStr, change.oldValue)) {
-            // Build the new value string
-            let newVal: string | number = change.newValue;
-            // Preserve numeric type if original was numeric
-            if (typeof cell.v === "number") {
-              const parsed = parseFloat(change.newValue);
-              if (!isNaN(parsed)) newVal = parsed;
-            }
-            // If the cell contained more than just the old value (e.g. "1.5 kW motor"),
-            // do a string replacement to preserve surrounding text
-            if (typeof cell.v === "string" && cell.v.trim() !== change.oldValue.trim()) {
-              const regex = new RegExp(change.oldValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-              newVal = cell.v.replace(regex, change.newValue + (change.unit ? " " + change.unit : ""));
-            } else if (change.unit && typeof newVal === "string") {
-              newVal = newVal + " " + change.unit;
-            }
+            const newVal = buildNewValue(cellValue as string | number | boolean | Date | null, change.oldValue, change.newValue, change.unit);
 
             // Record the change
+            const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
             changeLog.push({
-              sheetName,
+              sheetName: worksheet.name,
               cellRef,
               oldValue: cellStr,
               newValue: String(newVal),
-              rowIndex: row,
-              colIndex: col,
+              rowIndex: rowNumber,
+              colIndex: colNumber,
             });
 
-            // Apply the new value
-            cell.v = newVal;
-            cell.w = String(newVal); // formatted text
-            if (typeof newVal === "number") {
-              cell.t = "n";
-            } else {
-              cell.t = "s";
-            }
+            // Apply new value
+            cell.value = newVal;
 
-            // Highlight the cell with a yellow fill
-            if (!cell.s) cell.s = {};
-            cell.s.fill = {
-              patternType: "solid",
-              fgColor: { rgb: "FFFF00" }, // yellow
-              bgColor: { rgb: "FFFF00" },
+            // Apply yellow highlight — preserve existing font/border/alignment
+            const existingFill = cell.fill;
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFF00" }, // bright yellow
             };
+
+            // Make the text bold to draw attention
+            if (cell.font) {
+              cell.font = { ...cell.font, bold: true };
+            } else {
+              cell.font = { bold: true };
+            }
 
             break; // Only apply the first matching change per cell
           }
         }
-      }
-    }
+      });
+    });
   }
 
-  // Write back with cell styles enabled
-  const outBuffer = XLSX.write(workbook, {
-    type: "buffer",
-    bookType: "xlsx",
-    cellStyles: true,
-  });
-
+  // Write back — ExcelJS preserves all original formatting
+  const outBuffer = await workbook.xlsx.writeBuffer();
   return { buffer: Buffer.from(outBuffer), changeLog };
 }
 
 /**
- * Modify a PDF: add a visible "DRAFT — MODIFIED" watermark and append a
- * change summary page listing all applied changes.
- * (pdf-lib cannot reliably find and replace text in arbitrary PDFs, so we
- * add a clearly visible change summary overlay instead.)
+ * Modify a PDF: add a minimal "MODIFIED DRAFT" stamp to the first page
+ * and append a clean change summary page at the end.
  */
 async function modifyPdf(
   buffer: Buffer,
@@ -186,82 +213,82 @@ async function modifyPdf(
       colIndex: 0,
     }));
 
-  // Add "MODIFIED DRAFT" watermark to every existing page
-  const pages = pdfDoc.getPages();
-  for (const page of pages) {
-    const { width, height } = page.getSize();
-    // Semi-transparent amber banner at top
-    page.drawRectangle({
-      x: 0,
-      y: height - 28,
-      width,
-      height: 28,
-      color: rgb(1.0, 0.85, 0.2),
-      opacity: 0.9,
-    });
-    page.drawText("MODIFIED DRAFT — AI GENERATED CHANGES APPLIED", {
-      x: 12,
-      y: height - 20,
-      size: 10,
-      font: helveticaBold,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-  }
+  // Add a small "MODIFIED DRAFT" stamp to the first page only (non-intrusive)
+  const firstPage = pdfDoc.getPage(0);
+  const { width, height } = firstPage.getSize();
+  firstPage.drawRectangle({
+    x: width - 160,
+    y: height - 30,
+    width: 155,
+    height: 22,
+    color: rgb(1.0, 0.85, 0.0),
+    opacity: 0.9,
+  });
+  firstPage.drawText("MODIFIED DRAFT", {
+    x: width - 150,
+    y: height - 22,
+    size: 9,
+    font: helveticaBold,
+    color: rgb(0.1, 0.1, 0.1),
+  });
 
-  // Add a new "Change Summary" page at the end
+  // Append a clean change summary page
   const summaryPage = pdfDoc.addPage([595, 842]); // A4
-  const { width, height } = summaryPage.getSize();
-  const margin = 40;
-  let y = height - margin;
+  const margin = 45;
+  let y = summaryPage.getHeight() - margin;
 
-  // Header bar
-  summaryPage.drawRectangle({ x: 0, y: height - 60, width, height: 60, color: rgb(0.1, 0.17, 0.29) });
-  summaryPage.drawText("CHANGE SUMMARY — AI MODIFIED DOCUMENT", {
-    x: margin, y: height - 38, size: 14, font: helveticaBold, color: rgb(1, 1, 1),
-  });
-  summaryPage.drawText(`Document: ${docName}`, {
-    x: margin, y: height - 54, size: 9, font: helvetica, color: rgb(0.8, 0.85, 0.95),
-  });
-
-  y = height - 80;
-
-  summaryPage.drawText("The following changes have been applied to this document based on the engineering change event:", {
-    x: margin, y, size: 9, font: helvetica, color: rgb(0.2, 0.2, 0.2), maxWidth: width - 2 * margin,
+  // Title
+  summaryPage.drawText("CHANGE SUMMARY", {
+    x: margin, y, size: 16, font: helveticaBold, color: rgb(0.1, 0.17, 0.35),
   });
   y -= 20;
-
-  // Table header
-  summaryPage.drawRectangle({ x: margin, y: y - 4, width: width - 2 * margin, height: 18, color: rgb(0.18, 0.27, 0.45) });
-  summaryPage.drawText("Field / Parameter", { x: margin + 6, y: y + 1, size: 8, font: helveticaBold, color: rgb(1, 1, 1) });
-  summaryPage.drawText("Old Value", { x: margin + 180, y: y + 1, size: 8, font: helveticaBold, color: rgb(1, 1, 1) });
-  summaryPage.drawText("New Value", { x: margin + 320, y: y + 1, size: 8, font: helveticaBold, color: rgb(1, 1, 1) });
+  summaryPage.drawText(`Document: ${docName}`, {
+    x: margin, y, size: 9, font: helvetica, color: rgb(0.4, 0.4, 0.4),
+  });
+  y -= 8;
+  // Divider line
+  summaryPage.drawLine({
+    start: { x: margin, y },
+    end: { x: summaryPage.getWidth() - margin, y },
+    thickness: 1,
+    color: rgb(0.7, 0.7, 0.7),
+  });
   y -= 18;
 
-  // Change rows
+  summaryPage.drawText(
+    "The following values have been updated based on the engineering change event:",
+    { x: margin, y, size: 9, font: helvetica, color: rgb(0.25, 0.25, 0.25), maxWidth: summaryPage.getWidth() - 2 * margin }
+  );
+  y -= 20;
+
+  // Column headers
+  const col1 = margin;
+  const col2 = margin + 180;
+  const col3 = margin + 330;
+
+  summaryPage.drawRectangle({ x: margin, y: y - 4, width: summaryPage.getWidth() - 2 * margin, height: 18, color: rgb(0.18, 0.27, 0.45) });
+  summaryPage.drawText("Field / Parameter", { x: col1 + 4, y: y + 1, size: 8, font: helveticaBold, color: rgb(1, 1, 1) });
+  summaryPage.drawText("Old Value", { x: col2 + 4, y: y + 1, size: 8, font: helveticaBold, color: rgb(1, 1, 1) });
+  summaryPage.drawText("New Value", { x: col3 + 4, y: y + 1, size: 8, font: helveticaBold, color: rgb(1, 1, 1) });
+  y -= 18;
+
   const filteredChanges = changes.filter(c => c.oldValue && c.newValue);
   for (let i = 0; i < filteredChanges.length; i++) {
     const c = filteredChanges[i];
-    const rowBg = i % 2 === 0 ? rgb(0.97, 0.97, 0.97) : rgb(1, 1, 1);
-    summaryPage.drawRectangle({ x: margin, y: y - 4, width: width - 2 * margin, height: 16, color: rowBg });
+    const rowBg = i % 2 === 0 ? rgb(0.96, 0.97, 1.0) : rgb(1, 1, 1);
+    summaryPage.drawRectangle({ x: margin, y: y - 4, width: summaryPage.getWidth() - 2 * margin, height: 16, color: rowBg });
 
-    const label = c.fieldName.length > 28 ? c.fieldName.substring(0, 26) + "…" : c.fieldName;
-    const oldVal = `${c.oldValue}${c.unit ? " " + c.unit : ""}`;
-    const newVal = `${c.newValue}${c.unit ? " " + c.unit : ""}`;
+    const label = c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "…" : c.fieldName;
+    const oldVal = `${c.oldValue}${c.unit ? " " + c.unit : ""}`.substring(0, 20);
+    const newVal = `${c.newValue}${c.unit ? " " + c.unit : ""}`.substring(0, 20);
 
-    summaryPage.drawText(label, { x: margin + 6, y: y, size: 8, font: helvetica, color: rgb(0.15, 0.15, 0.15) });
-    summaryPage.drawText(oldVal.substring(0, 22), { x: margin + 180, y: y, size: 8, font: helvetica, color: rgb(0.7, 0.1, 0.1) });
-    summaryPage.drawText(newVal.substring(0, 22), { x: margin + 320, y: y, size: 8, font: helveticaBold, color: rgb(0.05, 0.5, 0.2) });
+    summaryPage.drawText(label, { x: col1 + 4, y, size: 8, font: helvetica, color: rgb(0.15, 0.15, 0.15) });
+    summaryPage.drawText(oldVal, { x: col2 + 4, y, size: 8, font: helvetica, color: rgb(0.65, 0.1, 0.1) });
+    summaryPage.drawText(newVal, { x: col3 + 4, y, size: 8, font: helveticaBold, color: rgb(0.05, 0.45, 0.15) });
 
     y -= 16;
-    if (y < margin + 40) break; // Prevent overflow
+    if (y < margin + 40) break;
   }
-
-  // Footer note
-  y -= 10;
-  summaryPage.drawText(
-    "This document has been automatically modified by ChangeSync AI. All changes must be reviewed and approved by the document owner before implementation.",
-    { x: margin, y: y, size: 7.5, font: helvetica, color: rgb(0.4, 0.4, 0.4), maxWidth: width - 2 * margin }
-  );
 
   const modifiedBuffer = await pdfDoc.save();
   return { buffer: Buffer.from(modifiedBuffer), changeLog };
@@ -269,7 +296,6 @@ async function modifyPdf(
 
 /**
  * Extract readable text content from a document for LLM analysis.
- * Returns a structured string summary of the document's content.
  */
 export async function extractDocumentContent(params: {
   fileUrl: string;
@@ -297,22 +323,18 @@ export async function extractDocumentContent(params: {
         const sheet = workbook.Sheets[sheetName];
         if (!sheet) continue;
         lines.push(`=== Sheet: ${sheetName} ===`);
-        // Convert sheet to array of arrays for readable output
         const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: "" }) as string[][];
-        // Output up to 200 rows to keep within LLM context limits
         const maxRows = Math.min(data.length, 200);
         for (let r = 0; r < maxRows; r++) {
           const row = data[r];
           if (!row) continue;
-          // Only include rows that have at least one non-empty cell
           const nonEmpty = row.filter(c => c !== null && c !== undefined && String(c).trim() !== "");
           if (nonEmpty.length === 0) continue;
-          const cellRef = XLSX.utils.encode_cell({ r, c: 0 });
-          lines.push(`Row ${r + 1} (${cellRef}): ${row.map(c => String(c ?? "")).join(" | ")}`);
+          lines.push(`Row ${r + 1}: ${row.map(c => String(c ?? "")).join(" | ")}`);
         }
         lines.push("");
       }
-      return lines.join("\n").substring(0, 12000); // Cap at 12k chars for LLM
+      return lines.join("\n").substring(0, 12000);
     } catch (e) {
       return `[Could not extract Excel content: ${e}]`;
     }
@@ -320,13 +342,12 @@ export async function extractDocumentContent(params: {
 
   if (isPdf) {
     try {
-      // pdf-lib doesn't support text extraction, so we return a note about the PDF structure
-      // and rely on the LLM to use the change event context to identify what to change
-      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-      const pageCount = pdfDoc.getPageCount();
-      return `PDF DOCUMENT: ${fileName}\nPage count: ${pageCount}\n\nNote: This is a PDF document. Based on the change event parameters, identify which values in this document type need to be updated.`;
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+      const result = await pdfParse(buffer);
+      return `PDF DOCUMENT: ${fileName}\n\n${result.text.substring(0, 10000)}`;
     } catch (e) {
-      return `[Could not read PDF: ${e}]`;
+      return `[Could not extract PDF content: ${e}]`;
     }
   }
 
@@ -346,7 +367,10 @@ export async function modifyDocument(params: {
 }): Promise<ModificationResult> {
   const { fileUrl, fileName, mimeType, changes, documentName, originalFileKey } = params;
 
-  // Download the original file
+  if (!changes || changes.length === 0) {
+    throw new Error("No changes provided to modifyDocument");
+  }
+
   const originalBuffer = await downloadFile(fileUrl);
 
   let modifiedBuffer: Buffer;
@@ -365,7 +389,7 @@ export async function modifyDocument(params: {
     fileName.endsWith(".pdf");
 
   if (isExcel) {
-    const result = modifyExcel(originalBuffer, changes);
+    const result = await modifyExcel(originalBuffer, changes);
     modifiedBuffer = result.buffer;
     changeLog = result.changeLog;
     outputMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -377,8 +401,7 @@ export async function modifyDocument(params: {
     outputMimeType = "application/pdf";
     outputExtension = "pdf";
   } else {
-    // For unsupported types (Word, etc.), return the original unchanged
-    // but still record the intended changes in the log
+    // For unsupported types, return the original with a change log
     modifiedBuffer = originalBuffer;
     changeLog = changes
       .filter(c => c.oldValue && c.newValue)
@@ -392,11 +415,12 @@ export async function modifyDocument(params: {
       }));
   }
 
-  // Upload modified file to S3
   const baseName = fileName.replace(/\.[^.]+$/, "");
   const modifiedFileName = `${baseName}-modified-${randomSuffix()}.${outputExtension}`;
   const modifiedFileKey = `modified-documents/${modifiedFileName}`;
   const { url: modifiedFileUrl } = await storagePut(modifiedFileKey, modifiedBuffer, outputMimeType);
+
+  console.log(`[DocumentModifier] Modified ${documentName}: ${changeLog.length} cell changes applied, uploaded to ${modifiedFileUrl}`);
 
   return {
     modifiedFileUrl,
