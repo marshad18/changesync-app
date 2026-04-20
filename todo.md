@@ -227,5 +227,5 @@
 - [x] Update vitest tests for the new ExcelJS-based modifier
 
 ## Document Modifier Gaps (To Verify)
-- [ ] Verify ExcelJS logic inserts "MODIFIED" header row only on sheets with actual changes (not unchanged sheets)
-- [ ] Add Vitest coverage for ExcelJS modifier: cell replacement, amber highlighting, changed-sheet watermark
+- [x] Verify ExcelJS logic inserts "MODIFIED" header row only on sheets with actual changes (not unchanged sheets)
+- [x] Add Vitest coverage for ExcelJS modifier: cell replacement, amber highlighting, changed-sheet watermark

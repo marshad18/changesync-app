@@ -192,6 +192,27 @@ async function modifyExcel(
     });
   }
 
+  // Add a visible "MODIFIED" notice row at the top of each sheet that had changes
+  const changedSheets = Array.from(new Set(changeLog.map(c => c.sheetName)));
+  for (const sheetName of changedSheets) {
+    const ws = workbook.getWorksheet(sheetName);
+    if (!ws) continue;
+    // Insert a new row at position 1 (pushes all existing rows down)
+    ws.spliceRows(1, 0, []);
+    const noticeRow = ws.getRow(1);
+    const noticeCell = noticeRow.getCell(1);
+    noticeCell.value = `⚠ MODIFIED BY CHANGESYNC AI — ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} — Review and approve before implementation`;
+    noticeCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC000" } };
+    noticeCell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+    noticeCell.alignment = { horizontal: "left", vertical: "middle" };
+    noticeRow.height = 22;
+    // Merge across the used column range so the notice spans the full width
+    const colCount = ws.columnCount || 10;
+    if (colCount > 1) {
+      ws.mergeCells(1, 1, 1, Math.min(colCount, 20));
+    }
+  }
+
   // Write back — ExcelJS preserves all original formatting
   const outBuffer = await workbook.xlsx.writeBuffer();
   return { buffer: Buffer.from(outBuffer as unknown as ArrayBuffer), changeLog };
