@@ -163,8 +163,10 @@ Return a JSON object with a "changes" array containing all identified changes.`;
   try {
     const content = String(response.choices[0]?.message?.content ?? "{}");
     const parsed = JSON.parse(content) as { changes: ChangeEntry[] };
+    // Keep entries where newValue is present and values differ
+    // Allow oldValue to be empty for new-only additions (rule 6 in prompt)
     const changes = (parsed.changes ?? []).filter(
-      c => c.oldValue && c.newValue && c.oldValue !== c.newValue
+      c => c.newValue && c.newValue.trim() !== "" && c.oldValue !== c.newValue
     );
     console.log(`[ManualComparison] Extracted ${changes.length} changes from manual comparison:`,
       changes.map(c => `${c.fieldName}: "${c.oldValue}" → "${c.newValue}"`).join(", ")

@@ -299,14 +299,23 @@ export async function getDraftById(id: number) {
   const result = await db.select().from(documentDrafts).where(eq(documentDrafts.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
-export async function updateDraftStatus(id: number, status: "generating"|"pending_review"|"routed_for_approval"|"approved"|"revision_requested"|"rejected", reviewNotes?: string, approvedBy?: number, approverName?: string) {
+export async function updateDraftStatus(id: number, status: "generating"|"pending_review"|"routed_for_approval"|"approved"|"revision_requested"|"rejected", reviewNotes?: string, approvedBy?: number, approverName?: string, approverEmail?: string, approvalToken?: string, approvalTokenExpiry?: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const updateData: Record<string, unknown> = { status };
   if (reviewNotes !== undefined) updateData.reviewNotes = reviewNotes;
   if (approverName !== undefined) updateData.approverName = approverName;
+  if (approverEmail !== undefined) updateData.approverEmail = approverEmail;
+  if (approvalToken !== undefined) updateData.approvalToken = approvalToken;
+  if (approvalTokenExpiry !== undefined) updateData.approvalTokenExpiry = approvalTokenExpiry;
   if (approvedBy !== undefined) { updateData.approvedBy = approvedBy; updateData.approvedAt = new Date(); }
   await db.update(documentDrafts).set(updateData).where(eq(documentDrafts.id, id));
+}
+export async function getDraftByApprovalToken(token: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(documentDrafts).where(eq(documentDrafts.approvalToken, token)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
 }
 export async function updateDraftContent(id: number, draftContent: string) {
   const db = await getDb();

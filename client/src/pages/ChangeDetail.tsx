@@ -361,35 +361,56 @@ export default function ChangeDetail() {
         {analyses.length > 0 && !isGenerating && (
           <div className="space-y-6">
 
-            {/* Summary bar */}
-            <div
-              className="flex items-center justify-between p-4 rounded-2xl"
-              style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
-            >
-              <div className="flex items-center gap-3">
-                <p className="text-sm font-semibold text-foreground">Impact Analysis Results</p>
-                <span
-                  className="text-xs px-2.5 py-1 rounded-full font-semibold"
-                  style={{ background: "oklch(0.75 0.18 85 / 0.12)", color: "oklch(0.80 0.16 85)", border: "1px solid oklch(0.75 0.18 85 / 0.25)" }}
-                >
-                  {impactedAnalyses.length} impacted
-                </span>
-                <span
-                  className="text-xs px-2.5 py-1 rounded-full font-semibold"
-                  style={{ background: "oklch(0.65 0.18 145 / 0.10)", color: "oklch(0.70 0.18 145)", border: "1px solid oklch(0.65 0.18 145 / 0.20)" }}
-                >
-                  {notImpactedAnalyses.length} clear
-                </span>
+            {/* ── Summary stats bar ── */}
+            <div className="grid grid-cols-3 gap-4">
+              <div
+                className="rounded-2xl p-5 flex items-center gap-4"
+                style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "oklch(0.94 0.008 255)" }}>
+                  <FileText className="h-5 w-5" style={{ color: "oklch(0.45 0.06 255)" }} />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{analyses.length}</p>
+                  <p className="text-xs text-muted-foreground">Total Documents</p>
+                </div>
+              </div>
+              <div
+                className="rounded-2xl p-5 flex items-center gap-4"
+                style={{ background: "oklch(0.98 0.010 85)", border: "1px solid oklch(0.82 0.10 85 / 0.40)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "oklch(0.92 0.14 85 / 0.50)" }}>
+                  <AlertTriangle className="h-5 w-5" style={{ color: "oklch(0.62 0.16 75)" }} />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold" style={{ color: "oklch(0.50 0.16 75)" }}>{impactedAnalyses.length}</p>
+                  <p className="text-xs" style={{ color: "oklch(0.62 0.10 75)" }}>Need Updating</p>
+                </div>
+              </div>
+              <div
+                className="rounded-2xl p-5 flex items-center gap-4"
+                style={{ background: "oklch(0.97 0.010 145)", border: "1px solid oklch(0.75 0.12 145 / 0.35)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "oklch(0.88 0.12 145 / 0.50)" }}>
+                  <CheckCircle2 className="h-5 w-5" style={{ color: "oklch(0.48 0.16 145)" }} />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold" style={{ color: "oklch(0.40 0.16 145)" }}>{notImpactedAnalyses.length}</p>
+                  <p className="text-xs" style={{ color: "oklch(0.50 0.12 145)" }}>No Changes Needed</p>
+                </div>
               </div>
             </div>
 
-            {/* Documents requiring updates */}
+            {/* ── Documents requiring updates ── */}
             {impactedAnalyses.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1">
-                  <AlertTriangle className="h-4 w-4" style={{ color: "oklch(0.80 0.16 85)" }} />
-                  <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "oklch(0.80 0.16 85)" }}>
-                    Documents Requiring Updates — {impactedAnalyses.length}
+                <div
+                  className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+                  style={{ background: "oklch(0.98 0.010 75)", border: "1px solid oklch(0.82 0.10 75 / 0.35)" }}
+                >
+                  <AlertTriangle className="h-4 w-4" style={{ color: "oklch(0.62 0.16 75)" }} />
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "oklch(0.50 0.14 75)" }}>
+                    {impactedAnalyses.length} Document{impactedAnalyses.length !== 1 ? "s" : ""} Require Updates
                   </p>
                 </div>
                 {impactedAnalyses.map((analysis) => {
@@ -401,96 +422,110 @@ export default function ChangeDetail() {
                       className="rounded-2xl overflow-hidden transition-all"
                       style={{
                         background: "oklch(1 0 0)",
-                        border: "1px solid oklch(0.75 0.18 85 / 0.20)",
+                        border: "1px solid oklch(0.82 0.10 75 / 0.25)",
+                        boxShadow: "0 2px 8px oklch(0.62 0.16 75 / 0.06)",
                       }}
                     >
-                      <div className="flex items-start gap-4 p-5">
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                          style={{ background: "oklch(0.75 0.18 85 / 0.10)" }}
-                        >
-                          <AlertTriangle className="h-4 w-4" style={{ color: "oklch(0.80 0.16 85)" }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                            <span className="font-semibold text-sm text-foreground">
-                              {analysis.documentName ?? `Document #${analysis.documentId}`}
-                            </span>
-                            <span
-                              className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                              style={confidenceStyle(analysis.confidence ?? "low")}
-                            >
-                              {analysis.confidence} confidence
-                            </span>
-                            {analysis.status === "confirmed" && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                                style={{ background: "oklch(0.65 0.18 145 / 0.12)", color: "oklch(0.70 0.18 145)", border: "1px solid oklch(0.65 0.18 145 / 0.25)" }}
-                              >
-                                Confirmed
+                      {/* Card top accent bar */}
+                      <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, oklch(0.75 0.18 75), oklch(0.82 0.14 85))" }} />
+                      <div className="p-5">
+                        <div className="flex items-start gap-4">
+                          {/* Icon */}
+                          <div
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
+                            style={{ background: "oklch(0.92 0.12 85 / 0.40)", border: "1px solid oklch(0.82 0.10 75 / 0.30)" }}
+                          >
+                            <AlertTriangle className="h-5 w-5" style={{ color: "oklch(0.62 0.16 75)" }} />
+                          </div>
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-2">
+                              <span className="font-bold text-base text-foreground">
+                                {analysis.documentName ?? `Document #${analysis.documentId}`}
                               </span>
-                            )}
-                            {analysis.status === "dismissed" && (
                               <span
-                                className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                                style={{ background: "oklch(0.18 0.020 255)", color: "oklch(0.50 0.04 255)", border: "1px solid oklch(0.25 0.020 255)" }}
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold"
+                                style={confidenceStyle(analysis.confidence ?? "low")}
                               >
-                                Dismissed
+                                {analysis.confidence} confidence
                               </span>
+                              {analysis.status === "confirmed" && (
+                                <span
+                                  className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold"
+                                  style={{ background: "oklch(0.92 0.12 145 / 0.40)", color: "oklch(0.42 0.16 145)", border: "1px solid oklch(0.65 0.18 145 / 0.30)" }}
+                                >
+                                  ✓ Confirmed
+                                </span>
+                              )}
+                              {analysis.status === "dismissed" && (
+                                <span
+                                  className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold"
+                                  style={{ background: "oklch(0.94 0.008 255)", color: "oklch(0.50 0.04 255)", border: "1px solid oklch(0.86 0.010 255)" }}
+                                >
+                                  Dismissed
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground leading-relaxed">{analysis.reasoning}</p>
+                            {isExpanded && analysis.impactedSections && (
+                              <div
+                                className="mt-4 pt-4 space-y-2"
+                                style={{ borderTop: "1px solid oklch(0.90 0.006 255)" }}
+                              >
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                  Sections to Update
+                                </p>
+                                <p className="text-sm leading-relaxed" style={{ color: "oklch(0.35 0.04 255)" }}>
+                                  {analysis.impactedSections}
+                                </p>
+                              </div>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">{analysis.reasoning}</p>
-                          {isExpanded && analysis.impactedSections && (
-                            <div
-                              className="mt-3 pt-3"
-                              style={{ borderTop: "1px solid oklch(0.20 0.020 255)" }}
-                            >
-                              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-                                Sections to Update
-                              </p>
-                              <p className="text-sm text-foreground/80 leading-relaxed">
-                                {analysis.impactedSections}
-                              </p>
-                            </div>
-                          )}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {draft && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setLocation(`/drafts/${draft.id}`)}
-                              className="gap-1.5 text-xs"
-                            >
-                              <FileText className="h-3.5 w-3.5" /> Review Draft
-                            </Button>
-                          )}
-                          {analysis.status === "pending" && (
-                            <>
-                              <button
-                                onClick={() => handleConfirm(analysis.id, "confirmed")}
-                                className="transition-colors"
-                                title="Confirm impact"
-                                style={{ color: "oklch(0.65 0.18 145)" }}
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleConfirm(analysis.id, "dismissed")}
-                                className="text-muted-foreground hover:text-red-400 transition-colors"
-                                title="Dismiss"
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </button>
-                            </>
-                          )}
+                        {/* Action row */}
+                        <div
+                          className="flex items-center justify-between mt-4 pt-4"
+                          style={{ borderTop: "1px solid oklch(0.92 0.006 255)" }}
+                        >
                           <button
                             onClick={() => setExpandedAnalysis(isExpanded ? null : analysis.id)}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg"
-                            style={{ background: "oklch(0.16 0.020 255)" }}
+                            className="text-xs font-medium transition-colors flex items-center gap-1"
+                            style={{ color: "oklch(0.55 0.04 255)" }}
                           >
-                            {isExpanded ? "Less" : "More"}
+                            {isExpanded ? "Show less ↑" : "Show details ↓"}
                           </button>
+                          <div className="flex items-center gap-2">
+                            {analysis.status === "pending" && (
+                              <>
+                                <button
+                                  onClick={() => handleConfirm(analysis.id, "confirmed")}
+                                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                                  style={{ background: "oklch(0.92 0.12 145 / 0.30)", color: "oklch(0.42 0.16 145)", border: "1px solid oklch(0.65 0.18 145 / 0.30)" }}
+                                  title="Confirm impact"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Confirm
+                                </button>
+                                <button
+                                  onClick={() => handleConfirm(analysis.id, "dismissed")}
+                                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                                  style={{ background: "oklch(0.96 0.008 25 / 0.30)", color: "oklch(0.50 0.16 25)", border: "1px solid oklch(0.75 0.14 25 / 0.30)" }}
+                                  title="Dismiss"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" /> Dismiss
+                                </button>
+                              </>
+                            )}
+                            {draft && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setLocation(`/drafts/${draft.id}`)}
+                                className="gap-1.5 text-xs"
+                              >
+                                <FileText className="h-3.5 w-3.5" /> Review Draft
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -499,24 +534,35 @@ export default function ChangeDetail() {
               </div>
             )}
 
-            {/* Documents not impacted */}
+            {/* ── Documents not impacted ── */}
             {notImpactedAnalyses.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1">
-                  <CheckCircle2 className="h-4 w-4" style={{ color: "oklch(0.65 0.18 145)" }} />
-                  <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "oklch(0.65 0.18 145)" }}>
-                    Documents Not Impacted — {notImpactedAnalyses.length}
+                <div
+                  className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+                  style={{ background: "oklch(0.97 0.010 145)", border: "1px solid oklch(0.75 0.12 145 / 0.35)" }}
+                >
+                  <CheckCircle2 className="h-4 w-4" style={{ color: "oklch(0.48 0.16 145)" }} />
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "oklch(0.40 0.14 145)" }}>
+                    {notImpactedAnalyses.length} Document{notImpactedAnalyses.length !== 1 ? "s" : ""} — No Changes Required
                   </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {notImpactedAnalyses.map((analysis) => (
                     <div
                       key={analysis.id}
-                      className="flex items-center gap-2 p-3 rounded-xl text-sm"
-                      style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.82 0.06 145)", boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)" }}
+                      className="flex items-center gap-3 p-3.5 rounded-xl"
+                      style={{
+                        background: "oklch(0.97 0.010 145)",
+                        border: "1px solid oklch(0.75 0.12 145 / 0.30)",
+                      }}
                     >
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: "oklch(0.65 0.18 145)" }} />
-                      <span className="text-muted-foreground truncate text-xs">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ background: "oklch(0.88 0.12 145 / 0.50)" }}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "oklch(0.48 0.16 145)" }} />
+                      </div>
+                      <span className="text-sm font-medium truncate" style={{ color: "oklch(0.35 0.08 145)" }}>
                         {analysis.documentName ?? `Document #${analysis.documentId}`}
                       </span>
                     </div>
@@ -525,48 +571,51 @@ export default function ChangeDetail() {
               </div>
             )}
 
-            {/* ── STEP 3: Generate Drafts CTA ── */}
+            {/* ── STEP 3: Generate Drafts CTA — bottom-left aligned ── */}
             {impactedAnalyses.length > 0 && drafts.length === 0 && (
               <div
                 className="rounded-2xl p-6"
                 style={{
-                  background: "linear-gradient(135deg, oklch(0.58 0.22 260 / 0.08), oklch(0.52 0.20 280 / 0.04))",
-                  border: "1px solid oklch(0.58 0.22 260 / 0.25)",
+                  background: "oklch(1 0 0)",
+                  border: "1px solid oklch(0.88 0.008 255)",
+                  boxShadow: "0 1px 3px oklch(0.18 0.020 255 / 0.06)",
                 }}
               >
-                <div className="flex items-start gap-4">
-                  <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "oklch(0.58 0.22 260 / 0.15)", border: "1px solid oklch(0.58 0.22 260 / 0.25)" }}
-                  >
-                    <FileText className="h-5 w-5" style={{ color: "oklch(0.72 0.18 260)" }} />
-                  </div>
+                <div className="flex items-start justify-between gap-6">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-foreground mb-1">
-                      Step 2 — Generate Updated Documents
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-                      The AI will generate updated drafts for the {impactedAnalyses.length} impacted document
-                      {impactedAnalyses.length !== 1 ? "s" : ""}. You can then review each one side-by-side with the original before routing for approval.
+                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Next Step</p>
+                    <h3 className="font-bold text-lg text-foreground mb-1">Generate Updated Document Drafts</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">
+                      The AI will produce updated drafts for the <strong>{impactedAnalyses.length}</strong> impacted document{impactedAnalyses.length !== 1 ? "s" : ""}.
+                      Each draft will show the original alongside the proposed changes for your review.
                     </p>
-                    <Button
-                      onClick={handleGenerateDrafts}
-                      disabled={isGenerating}
-                      size="lg"
-                      className="gap-2"
-                      style={{
-                        background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
-                        border: "none",
-                        boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
-                      }}
-                    >
-                      {isGenerating ? (
-                        <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
-                      ) : (
-                        <><Zap className="h-4 w-4" /> Generate Document Drafts</>
-                      )}
-                    </Button>
                   </div>
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
+                    style={{ background: "oklch(0.38 0.16 265 / 0.10)", border: "1px solid oklch(0.38 0.16 265 / 0.20)" }}
+                  >
+                    <Zap className="h-6 w-6" style={{ color: "oklch(0.45 0.18 265)" }} />
+                  </div>
+                </div>
+                {/* Bottom-left button placement */}
+                <div className="flex justify-start mt-5 pt-5" style={{ borderTop: "1px solid oklch(0.90 0.006 255)" }}>
+                  <Button
+                    onClick={handleGenerateDrafts}
+                    disabled={isGenerating}
+                    size="lg"
+                    className="gap-2"
+                    style={{
+                      background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))",
+                      border: "none",
+                      boxShadow: "0 4px 12px oklch(0.42 0.18 265 / 0.25)",
+                    }}
+                  >
+                    {isGenerating ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+                    ) : (
+                      <><Zap className="h-4 w-4" /> Generate Document Drafts</>
+                    )}
+                  </Button>
                 </div>
               </div>
             )}

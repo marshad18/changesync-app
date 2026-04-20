@@ -194,6 +194,10 @@ export const documentDrafts = mysqlTable("documentDrafts", {
     .default("generating")
     .notNull(),
   approverName: varchar("approverName", { length: 255 }),
+  approverEmail: varchar("approverEmail", { length: 320 }),
+  /** Signed token embedded in the approval link — allows approver to act without logging in */
+  approvalToken: varchar("approvalToken", { length: 128 }),
+  approvalTokenExpiry: timestamp("approvalTokenExpiry"),
   approvedBy: int("approvedBy"),
   approvedAt: timestamp("approvedAt"),
   /** S3 URL of the AI-modified version of the original document (Excel/PDF with changes applied) */

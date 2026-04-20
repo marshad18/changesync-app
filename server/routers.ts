@@ -11,6 +11,7 @@ import { modifyDocument, extractDocumentContent } from "./documentModifier";
 import { compareManuals, extractFileText } from "./manualComparison";
 import { listGitHubSampleDocs, downloadGitHubFile } from "./github";
 import { sdk } from "./_core/sdk";
+import { sendApproverEmail } from "./emailHelper";
 import {
   createChangeEvent, listChangeEvents, getChangeEventById, updateChangeEventStatus,
   createChangeAsset, getChangeAssetsByEventId,
@@ -18,6 +19,7 @@ import {
   createDocument, listDocuments, getDocumentById,
   createImpactAnalysis, getImpactAnalysesByEventId, updateImpactAnalysisStatus, deleteImpactAnalysesByEventId,
   createDocumentDraft, getDraftsByEventId, getDraftById, updateDraftStatus, updateDraftContent, updateDraftModifiedFile,
+  getDraftByApprovalToken,
   getUserByEmail, createEmailUser, updateUserPasswordHash, setPasswordResetToken, getUserByResetToken, updateUserLastSignedIn,
   listUsers, updateUserRole, adminResetUserPassword,
 } from "./db";
@@ -374,6 +376,10 @@ Only return changes where you found the exact old value in the document content.
                   : skus.map(s => ({ fieldName: s.fieldName, oldValue: s.oldValue ?? "", newValue: s.newValue ?? "", unit: s.unit ?? undefined }));
               }
 
+              if (changesToApply.length === 0) {
+                console.log(`[DocumentModifier] No changes identified for ${doc.name} — skipping file modification (text draft still available)`);
+              } else {
+
               console.log(`[DocumentModifier] Applying ${changesToApply.length} changes to ${doc.name}:`,
                 changesToApply.map(c => `${c.fieldName}: "${c.oldValue}" → "${c.newValue}"`).join(", "));
 
@@ -391,6 +397,7 @@ Only return changes where you found the exact old value in the document content.
                 modResult.modifiedFileKey,
                 JSON.stringify(modResult.changeLog),
               );
+              } // end else (changesToApply.length > 0)
             }
           } catch (modErr) {
             console.warn(`[DocumentModifier] Failed to modify document ${doc.name}:`, modErr);
@@ -549,11 +556,68 @@ Only return changes where you found the exact old value in the document content.
     routeForApproval: protectedProcedure.input(z.object({
       id: z.number(),
       approverName: z.string().optional(),
+      approverEmail: z.string().email(),
+      reviewNotes: z.string().optional(),
+      origin: z.string().url(),
+    })).mutation(async ({ input }) => {
+      // Generate a secure token valid for 7 days
+      const token = randomBytes(32).toString("hex");
+      const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const notes = [input.approverName ? `Routed to: ${input.approverName}` : "", input.reviewNotes ?? ""].filter(Boolean).join(" — ") || undefined;
+      await updateDraftStatus(input.id, "routed_for_approval", notes, undefined, input.approverName, input.approverEmail, token, expiry);
+
+      // Fetch draft + change event details for the email
+      const draft = await getDraftById(input.id);
+      if (!draft) throw new Error("Draft not found");
+      const changeEvent = await getChangeEventById(draft.changeEventId);
+      const doc = await getDocumentById(draft.documentId);
+      const changeLog: Array<{fieldName?: string; oldValue?: string; newValue?: string}> = [];
+      try { const parsed = JSON.parse(draft.changeLog ?? "[]"); if (Array.isArray(parsed)) changeLog.push(...parsed); } catch {}
+
+      const approvalLink = `${input.origin}/approve?token=${token}&action=approve`;
+      const rejectionLink = `${input.origin}/approve?token=${token}&action=reject`;
+
+      const emailSent = await sendApproverEmail({
+        to: input.approverEmail,
+        approverName: input.approverName,
+        changeEventTitle: changeEvent?.title ?? "Change Event",
+        documentName: doc?.name ?? `Document #${draft.documentId}`,
+        changedFields: changeLog.map(c => ({ fieldName: c.fieldName ?? "Field", oldValue: c.oldValue ?? "", newValue: c.newValue ?? "" })),
+        approvalLink,
+        rejectionLink,
+      });
+
+      return { success: true, emailSent, approvalLink };
+    }),
+
+    // Public endpoint — approver clicks the link in the email (no login required)
+    approveByToken: publicProcedure.input(z.object({
+      token: z.string(),
+      action: z.enum(["approve", "reject"]),
       reviewNotes: z.string().optional(),
     })).mutation(async ({ input }) => {
-      const notes = [input.approverName ? `Routed to: ${input.approverName}` : "", input.reviewNotes ?? ""].filter(Boolean).join(" — ") || undefined;
-      await updateDraftStatus(input.id, "routed_for_approval", notes, undefined, input.approverName);
-      return { success: true };
+      const draft = await getDraftByApprovalToken(input.token);
+      if (!draft) throw new Error("Invalid or expired approval link.");
+      if (draft.approvalTokenExpiry && new Date() > draft.approvalTokenExpiry) {
+        throw new Error("This approval link has expired. Please ask the requester to re-send.");
+      }
+      if (draft.status === "approved" || draft.status === "rejected") {
+        return { success: true, alreadyActioned: true, status: draft.status };
+      }
+      const newStatus = input.action === "approve" ? "approved" : "rejected";
+      await updateDraftStatus(draft.id, newStatus, input.reviewNotes);
+      return { success: true, alreadyActioned: false, status: newStatus, draftId: draft.id, changeEventId: draft.changeEventId };
+    }),
+
+    // Public endpoint — get draft info for the approval page (no login required, token-gated)
+    getByToken: publicProcedure.input(z.object({ token: z.string() })).query(async ({ input }) => {
+      const draft = await getDraftByApprovalToken(input.token);
+      if (!draft) return null;
+      const [doc, eventData] = await Promise.all([
+        getDocumentById(draft.documentId),
+        getChangeEventById(draft.changeEventId),
+      ]);
+      return { draft, document: doc, event: eventData ?? null };
     }),
   }),
 });

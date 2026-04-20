@@ -23,50 +23,95 @@ interface CellChange {
   colIndex: number;
 }
 
-function ChangeLogTable({ changeLog }: { changeLog: CellChange[] }) {
+function ChangeAnnotationPanel({ changeLog }: { changeLog: CellChange[] }) {
   if (!changeLog.length) return null;
   return (
-    <div className="mt-4 rounded-xl overflow-hidden" style={{ border: "1px solid oklch(0.88 0.008 255)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid oklch(0.80 0.10 85 / 0.40)" }}>
+      {/* Header */}
       <div
-        className="flex items-center gap-2 px-4 py-2.5"
-        style={{ background: "oklch(0.975 0.004 250)", borderBottom: "1px solid oklch(0.88 0.008 255)" }}
+        className="flex items-center gap-2.5 px-4 py-3"
+        style={{
+          background: "linear-gradient(135deg, oklch(0.96 0.012 85), oklch(0.98 0.008 75))",
+          borderBottom: "1px solid oklch(0.80 0.10 85 / 0.35)",
+        }}
       >
-        <Table2 className="h-3.5 w-3.5" style={{ color: "oklch(0.55 0.04 255)" }} />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          {changeLog.length} Change{changeLog.length !== 1 ? "s" : ""} Applied
+        <div
+          className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+          style={{ background: "oklch(0.88 0.14 85 / 0.60)" }}
+        >
+          <Table2 className="h-3.5 w-3.5" style={{ color: "oklch(0.55 0.16 75)" }} />
+        </div>
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "oklch(0.45 0.14 75)" }}>
+          {changeLog.length} Change{changeLog.length !== 1 ? "s" : ""} Applied to This Document
+        </span>
+        <span
+          className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          style={{ background: "oklch(0.88 0.14 85 / 0.60)", color: "oklch(0.45 0.14 75)" }}
+        >
+          Highlighted in yellow above
         </span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr style={{ background: "oklch(0.97 0.004 250)", borderBottom: "1px solid oklch(0.90 0.006 255)" }}>
-              <th className="text-left px-4 py-2 font-semibold text-muted-foreground">Location</th>
-              <th className="text-left px-4 py-2 font-semibold text-muted-foreground">Old Value</th>
-              <th className="text-left px-4 py-2 font-semibold text-muted-foreground">New Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {changeLog.map((c, i) => (
-              <tr
-                key={i}
-                style={{
-                  background: i % 2 === 0 ? "oklch(1 0 0)" : "oklch(0.985 0.002 250)",
-                  borderBottom: "1px solid oklch(0.93 0.004 255)",
-                }}
+      {/* Change cards */}
+      <div style={{ background: "oklch(1 0 0)" }}>
+        {changeLog.map((c, i) => {
+          const location = c.sheetName !== "PDF" && c.sheetName !== "Document"
+            ? `${c.sheetName} • Cell ${c.cellRef}`
+            : c.cellRef;
+          return (
+            <div
+              key={i}
+              className="flex items-stretch"
+              style={{ borderBottom: i < changeLog.length - 1 ? "1px solid oklch(0.92 0.006 255)" : "none" }}
+            >
+              {/* Change number + location */}
+              <div
+                className="flex flex-col items-center justify-center px-3 py-3 shrink-0 gap-1"
+                style={{ background: "oklch(0.97 0.010 85)", borderRight: "1px solid oklch(0.88 0.08 85 / 0.35)", minWidth: "52px" }}
               >
-                <td className="px-4 py-2 font-mono text-muted-foreground">
-                  {c.sheetName !== "PDF" && c.sheetName !== "Document" ? `${c.sheetName}!${c.cellRef}` : c.cellRef}
-                </td>
-                <td className="px-4 py-2" style={{ color: "oklch(0.55 0.16 25)" }}>
-                  <span className="line-through opacity-70">{c.oldValue}</span>
-                </td>
-                <td className="px-4 py-2 font-semibold" style={{ color: "oklch(0.42 0.14 145)" }}>
+                <span className="text-sm font-black" style={{ color: "oklch(0.55 0.16 75)" }}>#{i + 1}</span>
+                <span className="text-[9px] font-mono text-center leading-tight" style={{ color: "oklch(0.60 0.08 75)" }}>
+                  {location}
+                </span>
+              </div>
+              {/* Old value */}
+              <div
+                className="flex flex-col justify-center px-4 py-3 flex-1 gap-0.5"
+                style={{ background: "oklch(0.99 0.006 25 / 0.40)", borderRight: "1px solid oklch(0.88 0.06 25 / 0.25)" }}
+              >
+                <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "oklch(0.65 0.12 25)" }}>Before</span>
+                <span
+                  className="text-sm font-mono line-through"
+                  style={{ color: "oklch(0.55 0.18 25)", textDecorationColor: "oklch(0.65 0.18 25)" }}
+                >
+                  {c.oldValue || "—"}
+                </span>
+              </div>
+              {/* Arrow */}
+              <div className="flex items-center justify-center px-2 shrink-0" style={{ color: "oklch(0.55 0.04 255)" }}>
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 10h11M10 6l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              {/* New value highlighted */}
+              <div
+                className="flex flex-col justify-center px-4 py-3 flex-1 gap-0.5"
+                style={{ background: "oklch(0.96 0.10 85 / 0.35)" }}
+              >
+                <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "oklch(0.45 0.14 145)" }}>After</span>
+                <span
+                  className="text-sm font-bold font-mono px-1.5 py-0.5 rounded inline-block"
+                  style={{
+                    color: "oklch(0.28 0.14 145)",
+                    background: "oklch(0.88 0.14 85)",
+                    border: "1px solid oklch(0.75 0.16 85 / 0.60)",
+                  }}
+                >
                   {c.newValue}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -153,10 +198,10 @@ function ModifiedDocViewer({
           </a>
         </div>
       )}
-      {/* Change log table below the viewer */}
+      {/* Change annotation panel below the viewer */}
       {changeLog.length > 0 && (
-        <div className="p-4 overflow-y-auto shrink-0" style={{ maxHeight: "220px", borderTop: "1px solid oklch(0.90 0.006 255)" }}>
-          <ChangeLogTable changeLog={changeLog} />
+        <div className="p-4 overflow-y-auto shrink-0" style={{ maxHeight: "320px", borderTop: "1px solid oklch(0.90 0.006 255)" }}>
+          <ChangeAnnotationPanel changeLog={changeLog} />
         </div>
       )}
     </div>
@@ -306,6 +351,8 @@ export default function DraftReview() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [viewMode, setViewMode] = useState<"single" | "split">("split");
   const [approverName, setApproverName] = useState("");
+  const [approverEmail, setApproverEmail] = useState("");
+  const [routeSuccess, setRouteSuccess] = useState<{approvalLink: string; emailSent: boolean} | null>(null);
 
   const { data, isLoading, refetch } = trpc.drafts.getById.useQuery({ id }, { enabled: !!id });
   const approveMutation = trpc.drafts.approve.useMutation();
@@ -349,14 +396,25 @@ export default function DraftReview() {
   };
 
   const handleRouteForApproval = async () => {
+    if (!approverEmail.trim()) {
+      toast.error("Please enter the approver's email address.");
+      return;
+    }
     try {
-      await routeMutation.mutateAsync({
+      const result = await routeMutation.mutateAsync({
         id,
         approverName: approverName.trim() || undefined,
+        approverEmail: approverEmail.trim(),
         reviewNotes: reviewNotes.trim() || undefined,
+        origin: window.location.origin,
       });
       await refetch();
-      toast.success(approverName.trim() ? `Routed to ${approverName} for approval!` : "Routed for approval!");
+      setRouteSuccess({ approvalLink: result.approvalLink, emailSent: result.emailSent });
+      if (result.emailSent) {
+        toast.success(`Approval email sent to ${approverEmail}!`);
+      } else {
+        toast.success(`Routed for approval. Copy the link to share with the approver.`);
+      }
     } catch {
       toast.error("Failed to route for approval.");
     }
@@ -615,23 +673,30 @@ export default function DraftReview() {
                   background: "oklch(0.38 0.16 265 / 0.05)",
                 }}
               >
-                <span
-                  className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2"
-                  style={{ color: "oklch(0.42 0.18 265)" }}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {hasModifiedFile ? "Modified Document" : "AI Change Summary"}
-                </span>
-                {hasModifiedFile && doc?.fileName && (
+                <div className="flex flex-col gap-0.5">
                   <span
-                    className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[180px]"
-                    style={{ background: "oklch(0.45 0.12 145 / 0.15)", color: "oklch(0.38 0.14 145)" }}
-                    title={`Modified: ${doc.fileName}`}
+                    className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2"
+                    style={{ color: "oklch(0.42 0.18 265)" }}
                   >
-                    Modified: {doc.fileName}
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {hasModifiedFile ? "Updated Document" : "AI Change Summary"}
                   </span>
-                )}
+                  {hasModifiedFile && (
+                    <span className="text-[10px] text-muted-foreground" style={{ paddingLeft: "18px" }}>
+                      Same document as left — only changed values are updated &amp; highlighted in yellow
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
+                  {hasModifiedFile && doc?.fileName && (
+                    <span
+                      className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[160px]"
+                      style={{ background: "oklch(0.45 0.12 145 / 0.15)", color: "oklch(0.38 0.14 145)" }}
+                      title={`Updated: ${doc.fileName}`}
+                    >
+                      {doc.fileName}
+                    </span>
+                  )}
                   {isActionable && !isEditing && (
                     <Button size="sm" variant="outline" onClick={handleStartEdit} className="gap-1.5 text-xs h-7">
                       <Edit3 className="h-3.5 w-3.5" /> Edit
@@ -848,28 +913,40 @@ export default function DraftReview() {
             </div>
 
             {/* Route for approval */}
-            <div className="space-y-2">
-              <Label htmlFor="approverName" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Route to Approver{" "}
-                <span className="text-muted-foreground/60 normal-case font-normal">(optional — enter the document owner's name)</span>
-              </Label>
-              <div className="flex gap-3">
-                <div className="relative flex-1">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Send for Approval via Email</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">The approver will receive an email with a direct link to approve or reject this document.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
-                    id="approverName"
                     type="text"
-                    placeholder={doc?.owner ? `e.g., ${doc.owner}` : "e.g., John Smith — Maintenance Lead"}
+                    placeholder={doc?.owner ? `e.g., ${doc.owner}` : "Approver name (optional)"}
                     value={approverName}
                     onChange={(e) => setApproverName(e.target.value)}
                     className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2"
                     style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.86 0.010 255)" }}
                   />
                 </div>
+                <div className="relative">
+                  <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="email"
+                    placeholder="approver@company.com (required)"
+                    value={approverEmail}
+                    onChange={(e) => setApproverEmail(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2"
+                    style={{ background: "oklch(0.975 0.004 250)", border: `1px solid ${approverEmail.trim() ? "oklch(0.86 0.010 255)" : "oklch(0.82 0.06 25 / 0.5)"}` }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
                 <Button
                   onClick={handleRouteForApproval}
-                  disabled={routeMutation.isPending}
-                  className="gap-2 shrink-0"
+                  disabled={routeMutation.isPending || !approverEmail.trim()}
+                  className="gap-2"
                   style={{
                     background: "linear-gradient(135deg, oklch(0.38 0.16 265), oklch(0.32 0.14 275))",
                     border: "none",
@@ -877,13 +954,44 @@ export default function DraftReview() {
                   }}
                 >
                   {routeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Route for Approval
+                  Send Approval Request
                 </Button>
+                {doc?.owner && (
+                  <p className="text-xs text-muted-foreground">
+                    Suggested approver: <span className="text-foreground font-medium">{doc.owner}</span>
+                  </p>
+                )}
               </div>
-              {doc?.owner && (
-                <p className="text-xs text-muted-foreground">
-                  Suggested approver: <span className="text-foreground font-medium">{doc.owner}</span>
-                </p>
+              {/* Show approval link after routing */}
+              {routeSuccess && (
+                <div
+                  className="rounded-xl p-4 space-y-2"
+                  style={{ background: "oklch(0.95 0.012 145 / 0.3)", border: "1px solid oklch(0.65 0.18 145 / 0.3)" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" style={{ color: "oklch(0.50 0.16 145)" }} />
+                    <p className="text-xs font-semibold" style={{ color: "oklch(0.38 0.14 145)" }}>
+                      {routeSuccess.emailSent ? `Email sent to ${approverEmail}` : "Routed — copy link to share"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={routeSuccess.approvalLink}
+                      className="flex-1 text-xs px-3 py-1.5 rounded-lg font-mono"
+                      style={{ background: "oklch(0.975 0.004 250)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs shrink-0"
+                      onClick={() => { navigator.clipboard.writeText(routeSuccess.approvalLink); toast.success("Link copied!"); }}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
 

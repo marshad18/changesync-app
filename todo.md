@@ -227,3 +227,21 @@
 - [x] Both panels in DraftReview: left = original file rendered inline, right = modified file rendered inline with yellow highlights visible
 - [x] Change log table below right panel: fieldName | oldValue | newValue for every change made
 - [x] Update tests for the new manual comparison + ExcelJS modifier flow
+
+## Approver Email Workflow + UI Improvements (April 2026)
+- [x] DB: add approverEmail and approvalToken columns to documentDrafts table, run db:push
+- [x] Server: build server/emailHelper.ts — send approval email with change summary and direct approval link
+- [x] Server: update drafts.routeForApproval — accept approverEmail, generate secure token, send email, return approvalLink
+- [x] Server: add drafts.getByToken public procedure — fetch draft by approval token (no auth required)
+- [x] Server: add drafts.approveByToken public procedure — approve draft using token link
+- [x] Server: add drafts.rejectByToken public procedure — reject draft using token link
+- [x] Frontend: update DraftReview route-for-approval UI — email input, send button, show approval link after routing
+- [x] Frontend: build ApprovalPage.tsx — public page at /approve?token=... for approver to view change summary and approve/reject
+- [x] App.tsx: add /approve route as public (no auth required)
+- [x] Step 2 UI redesign: prettier impact analysis cards with colored icons, category badges, reasoning text, better layout
+- [x] All action buttons moved to bottom-left across all steps (Generate Document Drafts, etc.)
+- [x] Fix manualComparison.ts filter: allow new-only values (oldValue can be empty)
+- [x] Fix generateDrafts: skip modifyDocument gracefully when no changes found (non-fatal, text draft still available)
+- [x] DraftReview: replace ChangeLogTable with ChangeAnnotationPanel — rich visual cards with #number, location, Before (strikethrough), arrow, After (yellow highlight)
+- [x] DraftReview right panel header: updated subtitle "Same document as left — only changed values are updated & highlighted in yellow"
+- [x] DraftReview right panel header: renamed "Modified Document" → "Updated Document" for clarity

@@ -15,9 +15,10 @@ import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import UserManagement from "./pages/UserManagement";
+import ApprovalPage from "./pages/ApprovalPage";
 
 // Public auth routes — rendered without DashboardLayout
-const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
+const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password", "/approve"];
 
 function Router() {
   const [location] = useLocation();
@@ -30,6 +31,7 @@ function Router() {
         <Route path="/register" component={Register} />
         <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password" component={ResetPassword} />
+        <Route path="/approve" component={ApprovalPage} />
       </Switch>
     );
   }
