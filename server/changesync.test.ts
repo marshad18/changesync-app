@@ -70,6 +70,9 @@ vi.mock("./db", () => ({
 }));
 
 vi.mock("./documentModifier", () => ({
+  extractDocumentContent: vi.fn().mockResolvedValue(
+    "EXCEL DOCUMENT: LubeMap-EOLA3A.xlsx\n\n=== Sheet: Sheet1 ===\nRow 1 (A1): Equipment | Lube Point | Lubricant | Frequency | Qty\nRow 2 (A2): Motor | Bearing NDE | Shell Omala 220 | Monthly | 50g\nRow 3 (A3): Motor | Bearing DE | Shell Omala 220 | Monthly | 50g\n"
+  ),
   modifyDocument: vi.fn().mockResolvedValue({
     modifiedFileUrl: "https://s3.example.com/modified/lube-modified.xlsx",
     modifiedFileKey: "modified-documents/lube-modified.xlsx",
@@ -85,16 +88,28 @@ vi.mock("./storage", () => ({
 }));
 
 vi.mock("./_core/llm", () => ({
-  invokeLLM: vi.fn().mockResolvedValue({
-    choices: [{
-      message: {
-        content: JSON.stringify({
-          analyses: [
-            { documentId: 10, impacted: true, confidence: "high", reasoning: "Motor change affects lubrication.", impactedSections: "Lubrication points" },
+  invokeLLM: vi.fn().mockImplementation((params: { messages: Array<{ role: string; content: string }> }) => {
+    // Detect which LLM call this is based on the system prompt content
+    const systemMsg = params.messages.find((m: { role: string; content: string }) => m.role === "system");
+    const isChangeExtraction = systemMsg?.content?.includes("documentation analyst");
+    if (isChangeExtraction) {
+      // Return structured change extraction result
+      return Promise.resolve({
+        choices: [{ message: { content: JSON.stringify({
+          changes: [
+            { fieldName: "Lubrication Frequency", oldValue: "Monthly", newValue: "Weekly", unit: "" },
           ],
-        }),
-      },
-    }],
+        }) } }],
+      });
+    }
+    // Default: return impact analysis result (for analyzeImpact and generateDrafts text)
+    return Promise.resolve({
+      choices: [{ message: { content: JSON.stringify({
+        analyses: [
+          { documentId: 10, impacted: true, confidence: "high", reasoning: "Motor change affects lubrication.", impactedSections: "Lubrication points" },
+        ],
+      }) } }],
+    });
   }),
 }));
 

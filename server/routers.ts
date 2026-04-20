@@ -7,7 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
-import { modifyDocument } from "./documentModifier";
+import { modifyDocument, extractDocumentContent } from "./documentModifier";
 import { listGitHubSampleDocs, downloadGitHubFile } from "./github";
 import { sdk } from "./_core/sdk";
 import {
@@ -239,26 +239,117 @@ export const appRouter = router({
         const draftRecord = await createDocumentDraft({ impactAnalysisId: analysis.id, changeEventId: input.changeEventId, documentId: analysis.documentId, draftContent, status: "pending_review" });
         draftsCreated++;
 
-        // --- Real document modification ---
-        // Only attempt if the document has a file stored in S3
+        // --- Real document modification with LLM-driven change extraction ---
+        // Step 1: Extract the actual document content so the LLM can read it
+        // Step 2: Ask the LLM to identify exactly which values in THIS document need changing
+        // Step 3: Pass those specific changes to documentModifier to produce a real modified file
         if (doc.fileUrl && doc.fileName && draftRecord) {
           try {
-            // Get the latest inserted draft id
             const allDrafts = await getDraftsByEventId(input.changeEventId);
             const latestDraft = allDrafts[allDrafts.length - 1];
             if (latestDraft) {
+              // Extract readable content from the actual document
+              let docContent = "";
+              try {
+                docContent = await extractDocumentContent({
+                  fileUrl: doc.fileUrl,
+                  fileName: doc.fileName,
+                  mimeType: doc.mimeType ?? "application/octet-stream",
+                });
+              } catch (extractErr) {
+                console.warn(`[DocumentModifier] Could not extract content from ${doc.name}:`, extractErr);
+              }
+
+              // Ask the LLM to identify specific cell-level changes in this document
+              const changeExtractionPrompt = `You are an expert manufacturing documentation analyst. Your job is to identify SPECIFIC values in a document that need to be updated based on an engineering change event.
+
+ENGINEERING CHANGE EVENT:
+- Title: ${event.title}
+- Change Type: ${changeTypeLabel}
+- Change Context: ${changeContext || "Standard engineering change"}
+- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}
+- Affected SKU: ${event.affectedSku ?? "Not specified"}
+- Text Notes: ${event.textNotes ?? "None"}
+- Parameter Changes from change form: ${skuSummary}
+
+DOCUMENT BEING UPDATED:
+- Name: ${doc.name}
+- Code: ${doc.code ?? "N/A"}
+- Category: ${doc.category ?? "Unknown"}
+- Impacted Sections: ${analysis.impactedSections ?? "All sections"}
+- Impact Reasoning: ${analysis.reasoning}
+
+ACTUAL DOCUMENT CONTENT:
+${docContent || "(Content not available — use change event parameters to infer what needs changing)"}
+
+INSTRUCTIONS:
+Based on the document content above and the engineering change event, identify EVERY specific value in this document that needs to be updated. For each change:
+- oldValue: the EXACT text/number currently in the document (copy it verbatim from the document content above)
+- newValue: what it should be changed to
+- fieldName: a short label describing what this field is (e.g. "Motor Power", "Lubrication Frequency", "RPM")
+- unit: the unit of measurement if applicable (e.g. "kW", "RPM", "Nm") — omit if not applicable
+
+Only include changes where you can identify the EXACT old value from the document content. Do not invent values that are not in the document. If the document content is not available, use the parameter changes from the change form.
+
+Return a JSON object with a "changes" array.`;
+
+              const changeExtractionResponse = await invokeLLM({
+                messages: [
+                  { role: "system", content: "You are an expert manufacturing documentation analyst. Always respond with valid JSON only." },
+                  { role: "user", content: changeExtractionPrompt },
+                ],
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: "document_changes",
+                    strict: true,
+                    schema: {
+                      type: "object",
+                      properties: {
+                        changes: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              fieldName: { type: "string" },
+                              oldValue: { type: "string" },
+                              newValue: { type: "string" },
+                              unit: { type: "string" },
+                            },
+                            required: ["fieldName", "oldValue", "newValue", "unit"],
+                            additionalProperties: false,
+                          },
+                        },
+                      },
+                      required: ["changes"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+              });
+
+              let llmChanges: Array<{ fieldName: string; oldValue: string; newValue: string; unit: string }> = [];
+              try {
+                const parsed = JSON.parse(String(changeExtractionResponse.choices[0]?.message?.content ?? "{}")) as { changes: typeof llmChanges };
+                llmChanges = (parsed.changes ?? []).filter(c => c.oldValue && c.newValue && c.oldValue !== c.newValue);
+              } catch (parseErr) {
+                console.warn(`[DocumentModifier] Failed to parse LLM change extraction for ${doc.name}:`, parseErr);
+              }
+
+              // Fall back to SKU params if LLM returned nothing
+              const changesToApply = llmChanges.length > 0
+                ? llmChanges.map(c => ({ fieldName: c.fieldName, oldValue: c.oldValue, newValue: c.newValue, unit: c.unit || undefined }))
+                : skus.map(s => ({ fieldName: s.fieldName, oldValue: s.oldValue ?? "", newValue: s.newValue ?? "", unit: s.unit ?? undefined }));
+
+              console.log(`[DocumentModifier] Applying ${changesToApply.length} LLM-identified changes to ${doc.name}:`, changesToApply.map(c => `${c.fieldName}: ${c.oldValue} → ${c.newValue}`));
+
               const modResult = await modifyDocument({
                 fileUrl: doc.fileUrl,
                 fileName: doc.fileName,
                 mimeType: doc.mimeType ?? "application/octet-stream",
                 documentName: doc.name,
-                originalFileKey: doc.fileKey,
-                changes: skus.map(s => ({
-                  fieldName: s.fieldName,
-                  oldValue: s.oldValue ?? "",
-                  newValue: s.newValue ?? "",
-                  unit: s.unit ?? undefined,
-                })),
+                originalFileKey: doc.fileKey ?? "",
+                changes: changesToApply,
               });
               await updateDraftModifiedFile(
                 latestDraft.id,

@@ -268,6 +268,72 @@ async function modifyPdf(
 }
 
 /**
+ * Extract readable text content from a document for LLM analysis.
+ * Returns a structured string summary of the document's content.
+ */
+export async function extractDocumentContent(params: {
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+}): Promise<string> {
+  const { fileUrl, fileName, mimeType } = params;
+  const buffer = await downloadFile(fileUrl);
+
+  const isExcel =
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("excel") ||
+    fileName.endsWith(".xlsx") ||
+    fileName.endsWith(".xls");
+
+  const isPdf =
+    mimeType === "application/pdf" ||
+    fileName.endsWith(".pdf");
+
+  if (isExcel) {
+    try {
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const lines: string[] = [`EXCEL DOCUMENT: ${fileName}`, ""];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        lines.push(`=== Sheet: ${sheetName} ===`);
+        // Convert sheet to array of arrays for readable output
+        const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: "" }) as string[][];
+        // Output up to 200 rows to keep within LLM context limits
+        const maxRows = Math.min(data.length, 200);
+        for (let r = 0; r < maxRows; r++) {
+          const row = data[r];
+          if (!row) continue;
+          // Only include rows that have at least one non-empty cell
+          const nonEmpty = row.filter(c => c !== null && c !== undefined && String(c).trim() !== "");
+          if (nonEmpty.length === 0) continue;
+          const cellRef = XLSX.utils.encode_cell({ r, c: 0 });
+          lines.push(`Row ${r + 1} (${cellRef}): ${row.map(c => String(c ?? "")).join(" | ")}`);
+        }
+        lines.push("");
+      }
+      return lines.join("\n").substring(0, 12000); // Cap at 12k chars for LLM
+    } catch (e) {
+      return `[Could not extract Excel content: ${e}]`;
+    }
+  }
+
+  if (isPdf) {
+    try {
+      // pdf-lib doesn't support text extraction, so we return a note about the PDF structure
+      // and rely on the LLM to use the change event context to identify what to change
+      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+      const pageCount = pdfDoc.getPageCount();
+      return `PDF DOCUMENT: ${fileName}\nPage count: ${pageCount}\n\nNote: This is a PDF document. Based on the change event parameters, identify which values in this document type need to be updated.`;
+    } catch (e) {
+      return `[Could not read PDF: ${e}]`;
+    }
+  }
+
+  return `DOCUMENT: ${fileName} (${mimeType}) — content extraction not supported for this file type.`;
+}
+
+/**
  * Main entry point: modify a document file and upload to S3.
  */
 export async function modifyDocument(params: {

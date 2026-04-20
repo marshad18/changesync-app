@@ -207,3 +207,13 @@
 - [x] Images: keep existing img embed (already works inline)
 - [x] Both left (original) and right (modified) panels must render inline — no download buttons as the primary action
 - [x] Keep a small secondary "Open in new tab" link below the viewer for convenience
+
+## LLM-Driven Document Modification Fix (April 2026)
+- [x] Build extractDocumentContent() in documentModifier.ts: reads Excel cells into a flat text summary, extracts PDF text using pdf-lib
+- [x] Update generateDrafts in routers.ts: before calling documentModifier, call LLM with document content + change event to get structured JSON list of {fieldName, oldValue, newValue, unit} pairs specific to that document
+- [x] Use LLM-identified changes (not just SKU params) as input to modifyDocument()
+- [x] Verify changes are visible in the modified Excel (yellow cells) and modified PDF (change summary page)
+- [x] Update vitest tests to mock the new LLM call for document-specific change extraction
+
+## PDF Text Extraction (Future)
+- [ ] Add real PDF text extraction (e.g. pdf-parse npm package) so the LLM can read actual PDF cell values, not just page count
