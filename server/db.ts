@@ -313,3 +313,8 @@ export async function updateDraftContent(id: number, draftContent: string) {
   if (!db) throw new Error("Database not available");
   await db.update(documentDrafts).set({ draftContent }).where(eq(documentDrafts.id, id));
 }
+export async function updateDraftModifiedFile(id: number, modifiedFileUrl: string, modifiedFileKey: string, changeLog: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(documentDrafts).set({ modifiedFileUrl, modifiedFileKey, changeLog }).where(eq(documentDrafts.id, id));
+}

@@ -196,6 +196,11 @@ export const documentDrafts = mysqlTable("documentDrafts", {
   approverName: varchar("approverName", { length: 255 }),
   approvedBy: int("approvedBy"),
   approvedAt: timestamp("approvedAt"),
+  /** S3 URL of the AI-modified version of the original document (Excel/PDF with changes applied) */
+  modifiedFileUrl: text("modifiedFileUrl"),
+  modifiedFileKey: varchar("modifiedFileKey", { length: 512 }),
+  /** JSON array of change descriptors: [{cellRef, oldValue, newValue, sheetName}] */
+  changeLog: text("changeLog"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

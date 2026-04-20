@@ -7,6 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
+import { modifyDocument } from "./documentModifier";
 import { listGitHubSampleDocs, downloadGitHubFile } from "./github";
 import { sdk } from "./_core/sdk";
 import {
@@ -15,7 +16,7 @@ import {
   createSkuChange, getSkuChangesByEventId, deleteSkuChange,
   createDocument, listDocuments, getDocumentById,
   createImpactAnalysis, getImpactAnalysesByEventId, updateImpactAnalysisStatus, deleteImpactAnalysesByEventId,
-  createDocumentDraft, getDraftsByEventId, getDraftById, updateDraftStatus, updateDraftContent,
+  createDocumentDraft, getDraftsByEventId, getDraftById, updateDraftStatus, updateDraftContent, updateDraftModifiedFile,
   getUserByEmail, createEmailUser, updateUserPasswordHash, setPasswordResetToken, getUserByResetToken, updateUserLastSignedIn,
   listUsers, updateUserRole, adminResetUserPassword,
 } from "./db";
@@ -235,8 +236,42 @@ export const appRouter = router({
         const draftPrompt = `You are an expert manufacturing documentation writer. Generate updated content for a manufacturing document based on an engineering change.\n\nCHANGE EVENT:\n- Title: ${event.title}\n- Change Type: ${changeTypeLabel}\n- Change Context: ${changeContext || "Standard engineering change"}\n- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}\n- Affected SKU: ${event.affectedSku ?? "Not specified"}\n- Text Notes: ${event.textNotes ?? "None"}\n- Parameter Changes: ${skuSummary}\n\nDOCUMENT TO UPDATE:\n- Name: ${doc.name}\n- Code: ${doc.code ?? "N/A"}\n- Category: ${doc.category ?? "Unknown"}\n- Owner: ${doc.owner ?? "Unknown"}\n\nSECTIONS TO UPDATE:\n${analysis.impactedSections ?? "Review all sections"}\n\nIMPACT REASONING:\n${analysis.reasoning}\n\nGenerate a clear, professional summary of the specific changes that need to be made to this document. Format your response as:\n\n## Changes Required for ${doc.name}\n\n### Summary\n[Brief overview of what changed and why this document needs updating]\n\n### Specific Updates Required\n[Detailed list of changes by section — be specific about what old values to replace with new values]\n\n### New Content / Values\n[New values, procedures, or content to insert]\n\n### Verification Checklist\n[Items the document owner/approver should verify before approving]`;
         const draftResponse = await invokeLLM({ messages: [{ role: "system", content: "You are an expert manufacturing documentation writer." }, { role: "user", content: draftPrompt }] });
         const draftContent = String(draftResponse.choices[0]?.message?.content ?? "Draft generation failed.");
-        await createDocumentDraft({ impactAnalysisId: analysis.id, changeEventId: input.changeEventId, documentId: analysis.documentId, draftContent, status: "pending_review" });
+        const draftRecord = await createDocumentDraft({ impactAnalysisId: analysis.id, changeEventId: input.changeEventId, documentId: analysis.documentId, draftContent, status: "pending_review" });
         draftsCreated++;
+
+        // --- Real document modification ---
+        // Only attempt if the document has a file stored in S3
+        if (doc.fileUrl && doc.fileName && draftRecord) {
+          try {
+            // Get the latest inserted draft id
+            const allDrafts = await getDraftsByEventId(input.changeEventId);
+            const latestDraft = allDrafts[allDrafts.length - 1];
+            if (latestDraft) {
+              const modResult = await modifyDocument({
+                fileUrl: doc.fileUrl,
+                fileName: doc.fileName,
+                mimeType: doc.mimeType ?? "application/octet-stream",
+                documentName: doc.name,
+                originalFileKey: doc.fileKey,
+                changes: skus.map(s => ({
+                  fieldName: s.fieldName,
+                  oldValue: s.oldValue ?? "",
+                  newValue: s.newValue ?? "",
+                  unit: s.unit ?? undefined,
+                })),
+              });
+              await updateDraftModifiedFile(
+                latestDraft.id,
+                modResult.modifiedFileUrl,
+                modResult.modifiedFileKey,
+                JSON.stringify(modResult.changeLog),
+              );
+            }
+          } catch (modErr) {
+            console.warn(`[DocumentModifier] Failed to modify document ${doc.name}:`, modErr);
+            // Non-fatal: draft still exists with text content
+          }
+        }
       }
       await updateChangeEventStatus(input.changeEventId, "pending_approval");
       return { draftsCreated };

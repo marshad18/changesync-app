@@ -66,6 +66,18 @@ vi.mock("./db", () => ({
   }),
   updateDraftStatus: vi.fn().mockResolvedValue(undefined),
   updateDraftContent: vi.fn().mockResolvedValue(undefined),
+  updateDraftModifiedFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./documentModifier", () => ({
+  modifyDocument: vi.fn().mockResolvedValue({
+    modifiedFileUrl: "https://s3.example.com/modified/lube-modified.xlsx",
+    modifiedFileKey: "modified-documents/lube-modified.xlsx",
+    changeLog: [
+      { sheetName: "Sheet1", cellRef: "B5", oldValue: "1.5 kW", newValue: "2.2 kW", rowIndex: 4, colIndex: 1 },
+    ],
+    changesApplied: 1,
+  }),
 }));
 
 vi.mock("./storage", () => ({

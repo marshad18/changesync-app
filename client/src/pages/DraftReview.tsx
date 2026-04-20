@@ -8,10 +8,139 @@ import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Loader2,
-  FileText, Edit3, Eye, Save, Columns2, LayoutTemplate, Send,
-  User, Download, Image as ImageIcon, ExternalLink,
+  FileText, Edit3, Save, Columns2, LayoutTemplate, Send,
+  User, Download, ExternalLink, Sparkles, Table2, AlertCircle,
 } from "lucide-react";
 import ChangeProgressStepper from "@/components/ChangeProgressStepper";
+
+// ── Change log table: shows each cell/field that was modified ─────────────────
+interface CellChange {
+  sheetName: string;
+  cellRef: string;
+  oldValue: string;
+  newValue: string;
+  rowIndex: number;
+  colIndex: number;
+}
+
+function ChangeLogTable({ changeLog }: { changeLog: CellChange[] }) {
+  if (!changeLog.length) return null;
+  return (
+    <div className="mt-4 rounded-xl overflow-hidden" style={{ border: "1px solid oklch(0.88 0.008 255)" }}>
+      <div
+        className="flex items-center gap-2 px-4 py-2.5"
+        style={{ background: "oklch(0.975 0.004 250)", borderBottom: "1px solid oklch(0.88 0.008 255)" }}
+      >
+        <Table2 className="h-3.5 w-3.5" style={{ color: "oklch(0.55 0.04 255)" }} />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          {changeLog.length} Change{changeLog.length !== 1 ? "s" : ""} Applied
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr style={{ background: "oklch(0.97 0.004 250)", borderBottom: "1px solid oklch(0.90 0.006 255)" }}>
+              <th className="text-left px-4 py-2 font-semibold text-muted-foreground">Location</th>
+              <th className="text-left px-4 py-2 font-semibold text-muted-foreground">Old Value</th>
+              <th className="text-left px-4 py-2 font-semibold text-muted-foreground">New Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {changeLog.map((c, i) => (
+              <tr
+                key={i}
+                style={{
+                  background: i % 2 === 0 ? "oklch(1 0 0)" : "oklch(0.985 0.002 250)",
+                  borderBottom: "1px solid oklch(0.93 0.004 255)",
+                }}
+              >
+                <td className="px-4 py-2 font-mono text-muted-foreground">
+                  {c.sheetName !== "PDF" && c.sheetName !== "Document" ? `${c.sheetName}!${c.cellRef}` : c.cellRef}
+                </td>
+                <td className="px-4 py-2" style={{ color: "oklch(0.55 0.16 25)" }}>
+                  <span className="line-through opacity-70">{c.oldValue}</span>
+                </td>
+                <td className="px-4 py-2 font-semibold" style={{ color: "oklch(0.42 0.14 145)" }}>
+                  {c.newValue}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Modified file viewer: shows the actual modified Excel/PDF ─────────────────
+function ModifiedDocViewer({
+  modifiedFileUrl,
+  fileName,
+  mimeType,
+  changeLog,
+}: {
+  modifiedFileUrl: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  changeLog: CellChange[];
+}) {
+  const [pdfError, setPdfError] = useState(false);
+  const mime = mimeType ?? "";
+  const name = fileName ?? "modified-document";
+  const isPdf = mime.includes("pdf") || modifiedFileUrl.toLowerCase().includes(".pdf");
+  const isExcel =
+    mime.includes("spreadsheet") || mime.includes("excel") ||
+    modifiedFileUrl.toLowerCase().includes(".xlsx") || modifiedFileUrl.toLowerCase().includes(".xls");
+
+  return (
+    <div className="flex flex-col h-full">
+      {isPdf && !pdfError ? (
+        <iframe
+          src={`${modifiedFileUrl}#toolbar=1&navpanes=0`}
+          title={name}
+          className="flex-1 w-full"
+          style={{ minHeight: "480px", border: "none" }}
+          onError={() => setPdfError(true)}
+        />
+      ) : isExcel ? (
+        <div className="flex flex-col items-center justify-center flex-1 p-8 gap-5">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center"
+            style={{ background: "oklch(0.94 0.012 145 / 0.3)", border: "1px solid oklch(0.80 0.06 145 / 0.4)" }}
+          >
+            <FileText className="h-8 w-8" style={{ color: "oklch(0.45 0.12 145)" }} />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-semibold text-foreground">{name}</p>
+            <p className="text-xs text-muted-foreground">Modified Excel — {changeLog.length} cell{changeLog.length !== 1 ? "s" : ""} updated with yellow highlight</p>
+          </div>
+          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer" download={name}>
+            <Button size="sm" className="gap-2" style={{ background: "oklch(0.45 0.12 145)", border: "none" }}>
+              <Download className="h-4 w-4" /> Download Modified Excel
+            </Button>
+          </a>
+          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer">
+            <Button variant="ghost" size="sm" className="gap-2 text-xs">
+              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+            </Button>
+          </a>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center flex-1 p-8 gap-4">
+          <FileText className="h-10 w-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Preview not available</p>
+          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer" download={name}>
+            <Button variant="outline" size="sm" className="gap-2"><Download className="h-4 w-4" /> Download Modified File</Button>
+          </a>
+        </div>
+      )}
+      {/* Change log table below the viewer */}
+      <div className="p-4 overflow-y-auto" style={{ maxHeight: "220px", borderTop: "1px solid oklch(0.90 0.006 255)" }}>
+        <ChangeLogTable changeLog={changeLog} />
+      </div>
+    </div>
+  );
+}
 
 // ── Helper: decide how to render a file based on its mimeType / URL ──────────
 function OriginalDocViewer({ fileUrl, fileName, mimeType }: { fileUrl: string; fileName?: string | null; mimeType?: string | null }) {
@@ -243,6 +372,17 @@ export default function DraftReview() {
     document: typeof data.document;
     oldAsset: { fileUrl: string; fileName: string; mimeType?: string | null } | null;
   };
+
+  // Parse the change log from the draft record
+  const parsedChangeLog: CellChange[] = (() => {
+    try {
+      if (draft.changeLog) return JSON.parse(draft.changeLog) as CellChange[];
+    } catch { /* ignore */ }
+    return [];
+  })();
+
+  const hasModifiedFile = !!(draft as { modifiedFileUrl?: string | null }).modifiedFileUrl;
+  const modifiedFileUrl = (draft as { modifiedFileUrl?: string | null }).modifiedFileUrl ?? null;
   const status = draft.status ?? "pending_review";
   const isActionable = status === "pending_review" || status === "revision_requested";
 
@@ -481,19 +621,28 @@ export default function DraftReview() {
               </div>
 
               {/* Panel body */}
-              <div className="flex-1 p-6 overflow-auto" style={{ maxHeight: "600px" }}>
-                {isEditing ? (
+              <div className="flex-1 overflow-auto" style={{ maxHeight: "700px" }}>
+                {hasModifiedFile && modifiedFileUrl && !isEditing ? (
+                  /* Show the actual modified file (Excel/PDF) */
+                  <ModifiedDocViewer
+                    modifiedFileUrl={modifiedFileUrl}
+                    fileName={doc?.fileName ?? doc?.name}
+                    mimeType={doc?.mimeType}
+                    changeLog={parsedChangeLog}
+                  />
+                ) : isEditing ? (
+                  <div className="p-6">
                   <Textarea
                     value={editedContent}
                     onChange={(e) => setEditedContent(e.target.value)}
                     rows={25}
                     className="font-mono text-sm resize-none w-full h-full bg-background border-border text-foreground placeholder:text-muted-foreground/50"
                   />
+                  </div>
                 ) : (
                   <div
-                    className="prose prose-sm max-w-none"
+                    className="p-6 prose prose-sm max-w-none"
                     style={{
-                      // Style headings as section markers
                       "--tw-prose-headings": "oklch(0.25 0.04 255)",
                       "--tw-prose-body": "oklch(0.30 0.02 255)",
                     } as React.CSSProperties}

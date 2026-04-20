@@ -176,3 +176,17 @@
 - [x] Right panel: keep AI draft markdown but ensure highlighted change markers are visually distinct (amber/green callouts)
 - [x] If the document has a fileUrl (from Document Library), embed it as an iframe on the left
 - [x] If the change event has an uploaded "old" asset (manual_old, drawing_old, image_old), show that on the left as the "before" reference
+
+## Real Document Modification Engine (April 2026)
+
+- [ ] Install xlsx and pdf-lib npm packages for Excel/PDF editing
+- [ ] DB: add modifiedFileUrl and modifiedFileKey columns to documentDrafts table, run db:push
+- [ ] Server: build server/documentModifier.ts — download original file from S3/URL, parse Excel (xlsx) or PDF (pdf-lib), apply AI-identified value changes to actual cells/text, upload modified file to S3, return modifiedFileUrl
+- [ ] Server: update changeEvents.generateDrafts procedure — after LLM identifies changes, call documentModifier to produce a real modified file, store modifiedFileUrl in documentDrafts
+- [ ] Server: update drafts.getById to return modifiedFileUrl
+- [ ] DraftReview: left panel = original document fileUrl in iframe (PDF) or Excel viewer
+- [ ] DraftReview: right panel = modifiedFileUrl in iframe (PDF) or Excel viewer (not markdown text)
+- [ ] DraftReview: change summary panel below right panel listing each changed cell/value (old → new)
+- [ ] Excel: use xlsx to read workbook, identify cells matching old values from SKU changes, update to new values, highlight changed cells in amber, write back to buffer, upload to S3
+- [ ] PDF: use pdf-lib to find and replace text values in the PDF, upload modified version to S3
+- [ ] Update vitest tests for document modification flow

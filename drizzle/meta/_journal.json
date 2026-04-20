@@ -50,6 +50,13 @@
       "when": 1776464114606,
       "tag": "0006_reflective_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1776653357931,
+      "tag": "0007_serious_quasar",
+      "breakpoints": true
     }
   ]
 }
