@@ -368,8 +368,15 @@ export const appRouter = router({
     getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
       const draft = await getDraftById(input.id);
       if (!draft) return null;
-      const doc = await getDocumentById(draft.documentId);
-      return { draft, document: doc };
+      const [doc, assets] = await Promise.all([
+        getDocumentById(draft.documentId),
+        getChangeAssetsByEventId(draft.changeEventId),
+      ]);
+      // Find the "old" uploaded asset for this draft's document type
+      const oldAsset = assets.find(a =>
+        a.assetType === "manual_old" || a.assetType === "drawing_old" || a.assetType === "image_old" || a.assetType === "photo_old"
+      ) ?? null;
+      return { draft, document: doc, oldAsset };
     }),
     approve: protectedProcedure.input(z.object({ id: z.number(), reviewNotes: z.string().optional() }))
       .mutation(async ({ input, ctx }) => { await updateDraftStatus(input.id, "approved", input.reviewNotes, ctx.user.id); return { success: true }; }),

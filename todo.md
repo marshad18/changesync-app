@@ -169,3 +169,10 @@
 - [x] Redesign NewChange wizard: light card surfaces, navy step indicators
 - [x] Redesign ChangeDetail: light impact analysis cards, professional status badges
 - [x] Redesign DraftReview: light split-view panels, clean approval section
+
+## Split-View Document Comparison Fix (April 2026)
+- [x] Extend drafts.getById to also return the change event's uploaded assets (old/new files) and the document's fileUrl
+- [x] Left panel: render the original uploaded document inline — PDF via <iframe>, images via <img>, other files via download link
+- [x] Right panel: keep AI draft markdown but ensure highlighted change markers are visually distinct (amber/green callouts)
+- [x] If the document has a fileUrl (from Document Library), embed it as an iframe on the left
+- [x] If the change event has an uploaded "old" asset (manual_old, drawing_old, image_old), show that on the left as the "before" reference
