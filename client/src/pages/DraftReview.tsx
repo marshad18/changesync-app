@@ -85,12 +85,17 @@ function ModifiedDocViewer({
   changeLog: CellChange[];
 }) {
   const [pdfError, setPdfError] = useState(false);
+  const [officeError, setOfficeError] = useState(false);
   const mime = mimeType ?? "";
   const name = fileName ?? "modified-document";
-  const isPdf = mime.includes("pdf") || modifiedFileUrl.toLowerCase().includes(".pdf");
-  const isExcel =
-    mime.includes("spreadsheet") || mime.includes("excel") ||
-    modifiedFileUrl.toLowerCase().includes(".xlsx") || modifiedFileUrl.toLowerCase().includes(".xls");
+  const url = modifiedFileUrl.toLowerCase();
+  const isPdf = mime.includes("pdf") || url.includes(".pdf");
+  const isImage = mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(url);
+  const isExcel = mime.includes("spreadsheet") || mime.includes("excel") || url.includes(".xlsx") || url.includes(".xls");
+  const isWord = mime.includes("word") || mime.includes("msword") || url.includes(".docx") || url.includes(".doc");
+  const canUseOfficeViewer = (isExcel || isWord) && !officeError;
+  // Microsoft Office Online viewer — renders Excel/Word directly in the browser without any download
+  const officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(modifiedFileUrl)}`;
 
   return (
     <div className="flex flex-col h-full">
@@ -102,42 +107,58 @@ function ModifiedDocViewer({
           style={{ minHeight: "480px", border: "none" }}
           onError={() => setPdfError(true)}
         />
-      ) : isExcel ? (
-        <div className="flex flex-col items-center justify-center flex-1 p-8 gap-5">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{ background: "oklch(0.94 0.012 145 / 0.3)", border: "1px solid oklch(0.80 0.06 145 / 0.4)" }}
+      ) : isImage ? (
+        <div className="flex flex-col items-center justify-center flex-1 p-6 gap-4">
+          <img
+            src={modifiedFileUrl}
+            alt={name}
+            className="max-w-full max-h-[480px] rounded-xl object-contain"
+            style={{ border: "1px solid oklch(0.88 0.008 255)" }}
+          />
+          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 text-xs font-medium transition-colors"
+            style={{ color: "oklch(0.55 0.18 260)" }}
           >
-            <FileText className="h-8 w-8" style={{ color: "oklch(0.45 0.12 145)" }} />
-          </div>
-          <div className="text-center space-y-1">
-            <p className="text-sm font-semibold text-foreground">{name}</p>
-            <p className="text-xs text-muted-foreground">Modified Excel — {changeLog.length} cell{changeLog.length !== 1 ? "s" : ""} updated with yellow highlight</p>
-          </div>
-          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer" download={name}>
-            <Button size="sm" className="gap-2" style={{ background: "oklch(0.45 0.12 145)", border: "none" }}>
-              <Download className="h-4 w-4" /> Download Modified Excel
-            </Button>
+            <ExternalLink className="h-3.5 w-3.5" /> Open full size
           </a>
-          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer">
-            <Button variant="ghost" size="sm" className="gap-2 text-xs">
-              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
-            </Button>
-          </a>
+        </div>
+      ) : canUseOfficeViewer ? (
+        <div className="flex flex-col flex-1">
+          <iframe
+            src={officeViewerUrl}
+            title={name}
+            className="flex-1 w-full"
+            style={{ minHeight: "480px", border: "none" }}
+            onError={() => setOfficeError(true)}
+            allow="fullscreen"
+          />
+          <div
+            className="flex items-center justify-between px-4 py-2 shrink-0 text-xs text-muted-foreground"
+            style={{ borderTop: "1px solid oklch(0.90 0.006 255)" }}
+          >
+            <span>{changeLog.length} cell{changeLog.length !== 1 ? "s" : ""} updated (highlighted in yellow)</span>
+            <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" /> Open in new tab
+            </a>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center flex-1 p-8 gap-4">
           <FileText className="h-10 w-10 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">Preview not available</p>
-          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer" download={name}>
-            <Button variant="outline" size="sm" className="gap-2"><Download className="h-4 w-4" /> Download Modified File</Button>
+          <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm" className="gap-2"><ExternalLink className="h-4 w-4" /> Open in new tab</Button>
           </a>
         </div>
       )}
       {/* Change log table below the viewer */}
-      <div className="p-4 overflow-y-auto" style={{ maxHeight: "220px", borderTop: "1px solid oklch(0.90 0.006 255)" }}>
-        <ChangeLogTable changeLog={changeLog} />
-      </div>
+      {changeLog.length > 0 && (
+        <div className="p-4 overflow-y-auto shrink-0" style={{ maxHeight: "220px", borderTop: "1px solid oklch(0.90 0.006 255)" }}>
+          <ChangeLogTable changeLog={changeLog} />
+        </div>
+      )}
     </div>
   );
 }
@@ -145,11 +166,17 @@ function ModifiedDocViewer({
 // ── Helper: decide how to render a file based on its mimeType / URL ──────────
 function OriginalDocViewer({ fileUrl, fileName, mimeType }: { fileUrl: string; fileName?: string | null; mimeType?: string | null }) {
   const [pdfError, setPdfError] = useState(false);
+  const [officeError, setOfficeError] = useState(false);
 
   const mime = mimeType ?? "";
   const name = fileName ?? "document";
-  const isPdf = mime.includes("pdf") || fileUrl.toLowerCase().includes(".pdf");
-  const isImage = mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(fileUrl);
+  const url = fileUrl.toLowerCase();
+  const isPdf = mime.includes("pdf") || url.includes(".pdf");
+  const isImage = mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(url);
+  const isExcel = mime.includes("spreadsheet") || mime.includes("excel") || url.includes(".xlsx") || url.includes(".xls");
+  const isWord = mime.includes("word") || mime.includes("msword") || url.includes(".docx") || url.includes(".doc");
+  const canUseOfficeViewer = (isExcel || isWord) && !officeError;
+  const officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 
   if (isPdf && !pdfError) {
     return (
@@ -187,7 +214,32 @@ function OriginalDocViewer({ fileUrl, fileName, mimeType }: { fileUrl: string; f
     );
   }
 
-  // Fallback: download link for Word docs, Excel, etc.
+  if (canUseOfficeViewer) {
+    return (
+      <div className="flex flex-col h-full">
+        <iframe
+          src={officeViewerUrl}
+          title={name}
+          className="flex-1 w-full"
+          style={{ minHeight: "520px", border: "none" }}
+          onError={() => setOfficeError(true)}
+          allow="fullscreen"
+        />
+        <div
+          className="flex items-center justify-end px-4 py-2 shrink-0 text-xs text-muted-foreground"
+          style={{ borderTop: "1px solid oklch(0.90 0.006 255)" }}
+        >
+          <a href={fileUrl} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" /> Open in new tab
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback for unsupported types
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 gap-5">
       <div
@@ -198,18 +250,11 @@ function OriginalDocViewer({ fileUrl, fileName, mimeType }: { fileUrl: string; f
       </div>
       <div className="text-center space-y-1">
         <p className="text-sm font-semibold text-foreground">{name}</p>
-        <p className="text-xs text-muted-foreground">
-          {mime || "Document"} — preview not available in browser
-        </p>
+        <p className="text-xs text-muted-foreground">{mime || "Document"}</p>
       </div>
-      <a href={fileUrl} target="_blank" rel="noopener noreferrer" download={name}>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Download className="h-4 w-4" /> Download Original
-        </Button>
-      </a>
       <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-        <Button variant="ghost" size="sm" className="gap-2 text-xs">
-          <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+        <Button variant="outline" size="sm" className="gap-2">
+          <ExternalLink className="h-4 w-4" /> Open in new tab
         </Button>
       </a>
     </div>

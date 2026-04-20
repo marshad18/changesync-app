@@ -199,3 +199,11 @@
 - [x] For PDF files: left = iframe original PDF, right = iframe modified PDF with MODIFIED DRAFT banner
 - [x] Both panels must be visible simultaneously at equal width for side-by-side comparison
 - [x] If modifiedFileUrl is not yet generated, right panel shows a "Generating modified document..." loading state
+
+## Inline Document Viewer (April 2026)
+- [x] Replace Excel download fallback with Microsoft Office Online viewer iframe (https://view.officeapps.live.com/op/embed.aspx?src=FILE_URL) for both original and modified panels
+- [x] Replace Word/DOCX download fallback with same MS Office Online viewer
+- [x] PDF: keep existing iframe embed (already works inline)
+- [x] Images: keep existing img embed (already works inline)
+- [x] Both left (original) and right (modified) panels must render inline — no download buttons as the primary action
+- [x] Keep a small secondary "Open in new tab" link below the viewer for convenience
