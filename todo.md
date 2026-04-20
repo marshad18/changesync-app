@@ -179,14 +179,23 @@
 
 ## Real Document Modification Engine (April 2026)
 
-- [ ] Install xlsx and pdf-lib npm packages for Excel/PDF editing
-- [ ] DB: add modifiedFileUrl and modifiedFileKey columns to documentDrafts table, run db:push
-- [ ] Server: build server/documentModifier.ts — download original file from S3/URL, parse Excel (xlsx) or PDF (pdf-lib), apply AI-identified value changes to actual cells/text, upload modified file to S3, return modifiedFileUrl
-- [ ] Server: update changeEvents.generateDrafts procedure — after LLM identifies changes, call documentModifier to produce a real modified file, store modifiedFileUrl in documentDrafts
-- [ ] Server: update drafts.getById to return modifiedFileUrl
-- [ ] DraftReview: left panel = original document fileUrl in iframe (PDF) or Excel viewer
-- [ ] DraftReview: right panel = modifiedFileUrl in iframe (PDF) or Excel viewer (not markdown text)
-- [ ] DraftReview: change summary panel below right panel listing each changed cell/value (old → new)
-- [ ] Excel: use xlsx to read workbook, identify cells matching old values from SKU changes, update to new values, highlight changed cells in amber, write back to buffer, upload to S3
-- [ ] PDF: use pdf-lib to find and replace text values in the PDF, upload modified version to S3
-- [ ] Update vitest tests for document modification flow
+- [x] Install xlsx and pdf-lib npm packages for Excel/PDF editing
+- [x] DB: add modifiedFileUrl and modifiedFileKey columns to documentDrafts table, run db:push
+- [x] Server: build server/documentModifier.ts — download original file from S3/URL, parse Excel (xlsx) or PDF (pdf-lib), apply AI-identified value changes to actual cells/text, upload modified file to S3, return modifiedFileUrl
+- [x] Server: update changeEvents.generateDrafts procedure — after LLM identifies changes, call documentModifier to produce a real modified file, store modifiedFileUrl in documentDrafts
+- [x] Server: update drafts.getById to return modifiedFileUrl
+- [x] DraftReview: left panel = original document fileUrl in iframe (PDF) or Excel viewer
+- [x] DraftReview: right panel = modifiedFileUrl in iframe (PDF) or Excel viewer (not markdown text)
+- [x] DraftReview: change summary panel below right panel listing each changed cell/value (old → new)
+- [x] Excel: use xlsx to read workbook, identify cells matching old values from SKU changes, update to new values, highlight changed cells in amber, write back to buffer, upload to S3
+- [x] PDF: use pdf-lib to find and replace text values in the PDF, upload modified version to S3
+- [x] Update vitest tests for document modification flow
+
+## Correct Split-View Fix (April 2026)
+- [x] Left panel: ALWAYS show the original Document Library file (doc.fileUrl) — the EOLA 3A Excel/PDF as-is
+- [x] Right panel: ALWAYS show the modifiedFileUrl (the actual edited version of that same document)
+- [x] Remove the "uploaded old asset" priority from left panel — it is wrong; the document library file is the source of truth
+- [x] For Excel files: left = download original xlsx, right = download modified xlsx with yellow-highlighted cells + change log table
+- [x] For PDF files: left = iframe original PDF, right = iframe modified PDF with MODIFIED DRAFT banner
+- [x] Both panels must be visible simultaneously at equal width for side-by-side comparison
+- [x] If modifiedFileUrl is not yet generated, right panel shows a "Generating modified document..." loading state

@@ -216,26 +216,14 @@ function OriginalDocViewer({ fileUrl, fileName, mimeType }: { fileUrl: string; f
   );
 }
 
-// ── Left panel content: prefer "old" uploaded asset, fall back to library doc ─
+// ── Left panel: ALWAYS shows the Document Library original file ───────────────
 function LeftPanelContent({
-  oldAsset,
   doc,
 }: {
-  oldAsset: { fileUrl: string; fileName: string; mimeType?: string | null } | null;
   doc: { fileUrl?: string | null; fileName?: string | null; mimeType?: string | null; name?: string | null } | null;
 }) {
-  // Priority 1: the "old" file uploaded during the change event (e.g. manual_old, drawing_old)
-  if (oldAsset?.fileUrl) {
-    return (
-      <OriginalDocViewer
-        fileUrl={oldAsset.fileUrl}
-        fileName={oldAsset.fileName}
-        mimeType={oldAsset.mimeType}
-      />
-    );
-  }
-
-  // Priority 2: the document library file
+  // The Document Library file is always the source of truth for the left panel.
+  // This is the original EOLA 3A document (Lube Map, Safety Map, CPE, etc.) before any changes.
   if (doc?.fileUrl) {
     return (
       <OriginalDocViewer
@@ -255,7 +243,7 @@ function LeftPanelContent({
         <FileText className="h-7 w-7" style={{ color: "oklch(0.65 0.04 255)" }} />
       </div>
       <p className="text-sm text-muted-foreground text-center max-w-xs">
-        No original document found. Upload the document to the Document Library to see it here.
+        No original document found. Import this document into the Document Library first.
       </p>
     </div>
   );
@@ -402,12 +390,8 @@ export default function DraftReview() {
     rejected: "Rejected",
   };
 
-  // Determine what the left panel source is for the header label
-  const leftPanelLabel = oldAsset
-    ? `Uploaded Original (${oldAsset.fileName})`
-    : doc?.fileUrl
-    ? "Original Document (Library)"
-    : "Original Document";
+  // Left panel always shows the Document Library original file
+  const leftPanelLabel = doc?.fileName ?? doc?.name ?? "Original Document";
 
   return (
     <div className="min-h-full bg-background">
@@ -507,15 +491,27 @@ export default function DraftReview() {
               {doc.owner}
             </span>
           )}
-          {(doc?.fileUrl || oldAsset?.fileUrl) && (
+          {doc?.fileUrl && (
             <a
-              href={oldAsset?.fileUrl ?? doc?.fileUrl ?? "#"}
+              href={doc.fileUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
               style={{ background: "oklch(0.38 0.16 265 / 0.08)", border: "1px solid oklch(0.38 0.16 265 / 0.20)", color: "oklch(0.45 0.18 265)" }}
             >
               <ExternalLink className="h-3.5 w-3.5" /> Open Original
+            </a>
+          )}
+          {modifiedFileUrl && (
+            <a
+              href={modifiedFileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+              style={{ background: "oklch(0.45 0.12 145 / 0.10)", border: "1px solid oklch(0.45 0.12 145 / 0.30)", color: "oklch(0.40 0.14 145)" }}
+            >
+              <Download className="h-3.5 w-3.5" /> Download Modified
             </a>
           )}
         </div>
@@ -553,7 +549,7 @@ export default function DraftReview() {
 
               {/* Panel body — inline document viewer */}
               <div className="flex-1 overflow-auto">
-                <LeftPanelContent oldAsset={oldAsset} doc={doc ?? null} />
+                <LeftPanelContent doc={doc ?? null} />
               </div>
             </div>
 
@@ -578,9 +574,18 @@ export default function DraftReview() {
                   className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2"
                   style={{ color: "oklch(0.42 0.18 265)" }}
                 >
-                  <Edit3 className="h-3.5 w-3.5" />
-                  AI-Generated Changes
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {hasModifiedFile ? "Modified Document" : "AI Change Summary"}
                 </span>
+                {hasModifiedFile && doc?.fileName && (
+                  <span
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[180px]"
+                    style={{ background: "oklch(0.45 0.12 145 / 0.15)", color: "oklch(0.38 0.14 145)" }}
+                    title={`Modified: ${doc.fileName}`}
+                  >
+                    Modified: {doc.fileName}
+                  </span>
+                )}
                 <div className="flex items-center gap-2">
                   {isActionable && !isEditing && (
                     <Button size="sm" variant="outline" onClick={handleStartEdit} className="gap-1.5 text-xs h-7">
@@ -606,18 +611,29 @@ export default function DraftReview() {
                 className="flex items-center gap-4 px-5 py-2 shrink-0 text-[11px] font-medium"
                 style={{ borderBottom: "1px solid oklch(0.38 0.16 265 / 0.10)", background: "oklch(0.38 0.16 265 / 0.03)" }}
               >
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.92 0.08 85)" }} />
-                  <span style={{ color: "oklch(0.50 0.06 85)" }}>Updated sections</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.94 0.06 145)" }} />
-                  <span style={{ color: "oklch(0.45 0.10 145)" }}>New content</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.94 0.008 255)" }} />
-                  <span style={{ color: "oklch(0.55 0.04 255)" }}>Unchanged</span>
-                </span>
+                {hasModifiedFile ? (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.92 0.14 85)" }} />
+                      <span style={{ color: "oklch(0.45 0.10 75)" }}>Yellow cells = changed values</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.94 0.008 255)" }} />
+                      <span style={{ color: "oklch(0.55 0.04 255)" }}>White cells = unchanged</span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.92 0.08 85)" }} />
+                      <span style={{ color: "oklch(0.50 0.06 85)" }}>Updated sections</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.94 0.06 145)" }} />
+                      <span style={{ color: "oklch(0.45 0.10 145)" }}>New content</span>
+                    </span>
+                  </>
+                )}
               </div>
 
               {/* Panel body */}
@@ -630,6 +646,13 @@ export default function DraftReview() {
                     mimeType={doc?.mimeType}
                     changeLog={parsedChangeLog}
                   />
+                ) : !hasModifiedFile && draft.status === "generating" ? (
+                  /* Generating state */
+                  <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
+                    <Loader2 className="h-8 w-8 animate-spin" style={{ color: "oklch(0.55 0.18 265)" }} />
+                    <p className="text-sm font-medium" style={{ color: "oklch(0.45 0.12 265)" }}>Generating modified document...</p>
+                    <p className="text-xs text-muted-foreground text-center max-w-xs">The AI is editing your original document with the identified changes. This may take a moment.</p>
+                  </div>
                 ) : isEditing ? (
                   <div className="p-6">
                   <Textarea
