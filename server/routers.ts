@@ -261,40 +261,37 @@ export const appRouter = router({
               }
 
               // Ask the LLM to identify specific cell-level changes in this document
-              const changeExtractionPrompt = `You are an expert manufacturing documentation analyst. Your task is to scan a document and identify the EXACT cell values that need to change due to an engineering change event.
+              const changeExtractionPrompt = `You are an expert manufacturing documentation analyst. Your job is to identify SPECIFIC values in a document that need to be updated based on an engineering change event.
 
 ENGINEERING CHANGE EVENT:
 - Title: ${event.title}
 - Change Type: ${changeTypeLabel}
-- What changed: ${changeContext || skuSummary || "See parameter changes below"}
+- Change Context: ${changeContext || "Standard engineering change"}
 - Affected Equipment: ${event.affectedEquipment ?? "Not specified"}
-- Parameter Changes (from form): ${skuSummary}
-- Notes: ${event.textNotes ?? "None"}
+- Affected SKU: ${event.affectedSku ?? "Not specified"}
+- Text Notes: ${event.textNotes ?? "None"}
+- Parameter Changes from change form: ${skuSummary}
 
 DOCUMENT BEING UPDATED:
 - Name: ${doc.name}
 - Code: ${doc.code ?? "N/A"}
 - Category: ${doc.category ?? "Unknown"}
-- Why impacted: ${analysis.reasoning}
-- Sections affected: ${analysis.impactedSections ?? "All relevant sections"}
+- Impacted Sections: ${analysis.impactedSections ?? "All sections"}
+- Impact Reasoning: ${analysis.reasoning}
 
-DOCUMENT CONTENT (read every row carefully):
-${docContent || "(Content not available — use change event parameters to infer changes)"}
+ACTUAL DOCUMENT CONTENT:
+${docContent || "(Content not available — use change event parameters to infer what needs changing)"}
 
-INSTRUCTIONS — FOLLOW EXACTLY:
-1. Read the document content line by line above.
-2. Find EVERY cell/value that is directly affected by the engineering change.
-3. For each change you identify:
-   - oldValue: Copy the EXACT text or number from the document content above, VERBATIM. Do not paraphrase. For example if the document says "Monthly" copy "Monthly" exactly. If it says "1440" copy "1440" exactly.
-   - newValue: The correct updated value based on the change event.
-   - fieldName: A short human-readable label (e.g. "Lubrication Frequency", "Motor Power", "Operating Speed").
-   - unit: The unit if applicable (e.g. "kW", "RPM", "Nm", "months") — use empty string "" if none.
-4. ONLY include changes where you found the old value VERBATIM in the document content. Do not invent values.
-5. Be thorough — a motor change typically affects: power rating, current draw, speed/RPM, frame size, lubrication type, lubrication frequency, torque values, PM intervals, spare part numbers. A weight change affects: weight fields, packaging specs, load calculations. A price change affects: price fields, cost references.
-6. If the same value appears in multiple cells (e.g. "1440" appears 3 times), include a separate change entry for each occurrence with the same oldValue and newValue — the system will update all matching cells.
-7. If the document content is unavailable, use the parameter changes from the change form as your best estimate.
+INSTRUCTIONS:
+Based on the document content above and the engineering change event, identify EVERY specific value in this document that needs to be updated. For each change:
+- oldValue: the EXACT text/number currently in the document (copy it verbatim from the document content above)
+- newValue: what it should be changed to
+- fieldName: a short label describing what this field is (e.g. "Motor Power", "Lubrication Frequency", "RPM")
+- unit: the unit of measurement if applicable (e.g. "kW", "RPM", "Nm") — omit if not applicable
 
-Return a JSON object with a "changes" array. Include ALL relevant changes, not just one.`;
+Only include changes where you can identify the EXACT old value from the document content. Do not invent values that are not in the document. If the document content is not available, use the parameter changes from the change form.
+
+Return a JSON object with a "changes" array.`;
 
               const changeExtractionResponse = await invokeLLM({
                 messages: [
