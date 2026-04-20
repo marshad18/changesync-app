@@ -217,3 +217,15 @@
 
 ## PDF Text Extraction (Future)
 - [x] Add real PDF text extraction (e.g. pdf-parse npm package) so the LLM can read actual PDF cell values, not just page count
+
+## Document Modification Quality Overhaul (April 2026)
+- [x] Switch Excel modifier from xlsx (write-only, loses formatting) to ExcelJS (preserves all cell styles, fonts, borders, merged cells)
+- [x] Surgical cell replacement: scan every cell, match old value exactly (with fuzzy/numeric tolerance), update only that cell, highlight in amber (#FFC000)
+- [x] Preserve all original formatting: column widths, row heights, merged cells, fonts, borders, number formats
+- [x] Add a "MODIFIED" watermark row at the top of each changed sheet only (not every sheet)
+- [x] Improve LLM change extraction prompt: instruct it to return the EXACT string as it appears in the document, not a paraphrased version
+- [x] Update vitest tests for the new ExcelJS-based modifier
+
+## Document Modifier Gaps (To Verify)
+- [ ] Verify ExcelJS logic inserts "MODIFIED" header row only on sheets with actual changes (not unchanged sheets)
+- [ ] Add Vitest coverage for ExcelJS modifier: cell replacement, amber highlighting, changed-sheet watermark
