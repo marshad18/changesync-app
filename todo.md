@@ -216,4 +216,4 @@
 - [x] Update vitest tests to mock the new LLM call for document-specific change extraction
 
 ## PDF Text Extraction (Future)
-- [ ] Add real PDF text extraction (e.g. pdf-parse npm package) so the LLM can read actual PDF cell values, not just page count
+- [x] Add real PDF text extraction (e.g. pdf-parse npm package) so the LLM can read actual PDF cell values, not just page count

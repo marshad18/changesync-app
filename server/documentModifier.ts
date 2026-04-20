@@ -320,13 +320,17 @@ export async function extractDocumentContent(params: {
 
   if (isPdf) {
     try {
-      // pdf-lib doesn't support text extraction, so we return a note about the PDF structure
-      // and rely on the LLM to use the change event context to identify what to change
-      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-      const pageCount = pdfDoc.getPageCount();
-      return `PDF DOCUMENT: ${fileName}\nPage count: ${pageCount}\n\nNote: This is a PDF document. Based on the change event parameters, identify which values in this document type need to be updated.`;
+      // Use pdf-parse for real text extraction
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require("pdf-parse") as (buf: Buffer, options?: object) => Promise<{ text: string; numpages: number }>;
+      const data = await pdfParse(buffer, { max: 0 });
+      const text = data.text ?? "";
+      const pageCount = data.numpages ?? 0;
+      // Truncate to 12k chars for LLM context limit
+      const truncated = text.length > 12000 ? text.substring(0, 12000) + "\n...[truncated]" : text;
+      return `PDF DOCUMENT: ${fileName}\nPage count: ${pageCount}\n\nEXTRACTED TEXT:\n${truncated}`;
     } catch (e) {
-      return `[Could not read PDF: ${e}]`;
+      return `[Could not extract PDF text: ${e}]`;
     }
   }
 
