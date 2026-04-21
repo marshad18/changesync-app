@@ -360,6 +360,7 @@ export default function DraftReview() {
   const revisionMutation = trpc.drafts.requestRevision.useMutation();
   const updateContentMutation = trpc.drafts.updateContent.useMutation();
   const routeMutation = trpc.drafts.routeForApproval.useMutation();
+  const reGenMutation = trpc.drafts.reGenerateModifiedFile.useMutation();
 
   const handleApprove = async () => {
     try {
@@ -417,6 +418,21 @@ export default function DraftReview() {
       }
     } catch {
       toast.error("Failed to route for approval.");
+    }
+  };
+
+  const handleReGenerate = async () => {
+    try {
+      toast.info("Re-generating modified document… this may take 30–60 seconds.");
+      const result = await reGenMutation.mutateAsync({ draftId: id });
+      await refetch();
+      if (result.success) {
+        toast.success(result.message ?? "Modified document generated!");
+      } else {
+        toast.warning(result.message ?? "Could not identify changes. Please upload old and new manuals.");
+      }
+    } catch {
+      toast.error("Failed to re-generate. Please try again.");
     }
   };
 
@@ -696,6 +712,35 @@ export default function DraftReview() {
                     >
                       {doc.fileName}
                     </span>
+                  )}
+                  {!hasModifiedFile && isActionable && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleReGenerate}
+                      disabled={reGenMutation.isPending}
+                      className="gap-1.5 text-xs h-7"
+                      style={{ borderColor: "oklch(0.38 0.16 265 / 0.40)", color: "oklch(0.42 0.18 265)" }}
+                    >
+                      {reGenMutation.isPending
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+                        : <><Sparkles className="h-3.5 w-3.5" /> Generate Modified File</>
+                      }
+                    </Button>
+                  )}
+                  {hasModifiedFile && isActionable && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleReGenerate}
+                      disabled={reGenMutation.isPending}
+                      className="gap-1.5 text-xs h-7"
+                    >
+                      {reGenMutation.isPending
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Re-generating…</>
+                        : <><Sparkles className="h-3.5 w-3.5" /> Re-generate</>
+                      }
+                    </Button>
                   )}
                   {isActionable && !isEditing && (
                     <Button size="sm" variant="outline" onClick={handleStartEdit} className="gap-1.5 text-xs h-7">

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
@@ -18,7 +19,7 @@ import {
   createSkuChange, getSkuChangesByEventId, deleteSkuChange,
   createDocument, listDocuments, getDocumentById,
   createImpactAnalysis, getImpactAnalysesByEventId, updateImpactAnalysisStatus, deleteImpactAnalysesByEventId,
-  createDocumentDraft, getDraftsByEventId, getDraftById, updateDraftStatus, updateDraftContent, updateDraftModifiedFile,
+  createDocumentDraft, getDraftsByEventId, getDraftById, getDraftByImpactAnalysisId, updateDraftStatus, updateDraftContent, updateDraftModifiedFile,
   getDraftByApprovalToken,
   getUserByEmail, createEmailUser, updateUserPasswordHash, setPasswordResetToken, getUserByResetToken, updateUserLastSignedIn,
   listUsers, updateUserRole, adminResetUserPassword,
@@ -277,10 +278,11 @@ export const appRouter = router({
         // Step 1: Extract the actual document content so the LLM can read it
         // Step 2: Ask the LLM to identify exactly which values in THIS document need changing
         // Step 3: Pass those specific changes to documentModifier to produce a real modified file
-        if (doc.fileUrl && doc.fileName && draftRecord) {
+        if (doc.fileUrl && doc.fileName) {
           try {
-            const allDrafts = await getDraftsByEventId(input.changeEventId);
-            const latestDraft = allDrafts[allDrafts.length - 1];
+            // Use the impact analysis ID to find the exact draft we just created — avoids
+            // the race condition where allDrafts[last] could be the wrong draft.
+            const latestDraft = await getDraftByImpactAnalysisId(analysis.id);
             if (latestDraft) {
               let changesToApply: Array<{ fieldName: string; oldValue: string; newValue: string; unit?: string }> = [];
 
@@ -365,7 +367,8 @@ Only return changes where you found the exact old value in the document content.
                 let llmChanges: Array<{ fieldName: string; oldValue: string; newValue: string; unit: string }> = [];
                 try {
                   const parsed = JSON.parse(String(changeExtractionResponse.choices[0]?.message?.content ?? "{}")) as { changes: typeof llmChanges };
-                  llmChanges = (parsed.changes ?? []).filter(c => c.oldValue && c.newValue && c.oldValue !== c.newValue);
+                  // Allow empty oldValue for new-value-only additions (the modifier handles them via fieldName matching)
+                  llmChanges = (parsed.changes ?? []).filter(c => c.newValue && c.newValue.trim() !== "" && c.oldValue !== c.newValue);
                 } catch (parseErr) {
                   console.warn(`[DocumentModifier] Failed to parse LLM change extraction for ${doc.name}:`, parseErr);
                 }
@@ -379,24 +382,23 @@ Only return changes where you found the exact old value in the document content.
               if (changesToApply.length === 0) {
                 console.log(`[DocumentModifier] No changes identified for ${doc.name} — skipping file modification (text draft still available)`);
               } else {
+                console.log(`[DocumentModifier] Applying ${changesToApply.length} changes to ${doc.name}:`,
+                  changesToApply.map(c => `${c.fieldName}: "${c.oldValue}" → "${c.newValue}"`).join(", "));
 
-              console.log(`[DocumentModifier] Applying ${changesToApply.length} changes to ${doc.name}:`,
-                changesToApply.map(c => `${c.fieldName}: "${c.oldValue}" → "${c.newValue}"`).join(", "));
-
-              const modResult = await modifyDocument({
-                fileUrl: doc.fileUrl,
-                fileName: doc.fileName,
-                mimeType: doc.mimeType ?? "application/octet-stream",
-                documentName: doc.name,
-                originalFileKey: doc.fileKey ?? "",
-                changes: changesToApply,
-              });
-              await updateDraftModifiedFile(
-                latestDraft.id,
-                modResult.modifiedFileUrl,
-                modResult.modifiedFileKey,
-                JSON.stringify(modResult.changeLog),
-              );
+                const modResult = await modifyDocument({
+                  fileUrl: doc.fileUrl,
+                  fileName: doc.fileName,
+                  mimeType: doc.mimeType ?? "application/octet-stream",
+                  documentName: doc.name,
+                  originalFileKey: doc.fileKey ?? "",
+                  changes: changesToApply,
+                });
+                await updateDraftModifiedFile(
+                  latestDraft.id,
+                  modResult.modifiedFileUrl,
+                  modResult.modifiedFileKey,
+                  JSON.stringify(modResult.changeLog),
+                );
               } // end else (changesToApply.length > 0)
             }
           } catch (modErr) {
@@ -619,6 +621,85 @@ Only return changes where you found the exact old value in the document content.
       ]);
       return { draft, document: doc, event: eventData ?? null };
     }),
+
+    // Re-generate the modified file for an existing draft (useful when the original generation failed)
+    reGenerateModifiedFile: protectedProcedure
+      .input(z.object({ draftId: z.number() }))
+      .mutation(async ({ input }) => {
+        const draft = await getDraftById(input.draftId);
+        if (!draft) throw new TRPCError({ code: "NOT_FOUND", message: "Draft not found" });
+        const doc = await getDocumentById(draft.documentId);
+        if (!doc?.fileUrl || !doc.fileName) throw new TRPCError({ code: "BAD_REQUEST", message: "Document has no file attached" });
+
+        // Get the change event and its manual diff
+        const event = await getChangeEventById(draft.changeEventId);
+        if (!event) throw new TRPCError({ code: "NOT_FOUND", message: "Change event not found" });
+
+        const assets = await getChangeAssetsByEventId(draft.changeEventId);
+        const skus = await getSkuChangesByEventId(draft.changeEventId);
+
+        let changesToApply: Array<{ fieldName: string; oldValue: string; newValue: string; unit?: string }> = [];
+
+        // Try manual comparison first
+        const oldManualAsset = assets.find(a => a.assetType === "manual_old" || a.assetType === "drawing_old");
+        const newManualAsset = assets.find(a => a.assetType === "manual_new" || a.assetType === "drawing_new");
+        if (oldManualAsset?.fileUrl && newManualAsset?.fileUrl) {
+          try {
+            const [oldText, newText] = await Promise.all([
+              extractFileText(oldManualAsset.fileUrl, oldManualAsset.fileName),
+              extractFileText(newManualAsset.fileUrl, newManualAsset.fileName),
+            ]);
+            const manualDiff = await compareManuals({
+              oldManualText: oldText,
+              newManualText: newText,
+              oldFileName: oldManualAsset.fileName,
+              newFileName: newManualAsset.fileName,
+              changeEventTitle: event.title,
+            });
+            if (manualDiff.length > 0) changesToApply = manualDiff;
+          } catch (e) {
+            console.warn("[ReGenerate] Manual comparison failed:", e);
+          }
+        }
+
+        // Fallback: use SKU parameters
+        if (changesToApply.length === 0 && skus.length > 0) {
+          changesToApply = skus.map(s => ({ fieldName: s.fieldName, oldValue: s.oldValue ?? "", newValue: s.newValue ?? "", unit: s.unit ?? undefined }));
+        }
+
+        // Fallback: use LLM to extract changes from the document content
+        if (changesToApply.length === 0) {
+          try {
+            const docContent = await extractDocumentContent({ fileUrl: doc.fileUrl, fileName: doc.fileName, mimeType: doc.mimeType ?? "application/octet-stream" });
+            const changeExtractionResponse = await invokeLLM({
+              messages: [
+                { role: "system", content: "You are an expert at identifying specific value changes in manufacturing documents. Return ONLY valid JSON." },
+                { role: "user", content: `Change event: ${event.title}\n\nDocument content:\n${docContent.substring(0, 8000)}\n\nIdentify specific values that need to change. Return JSON: {"changes": [{"fieldName": "...", "oldValue": "...", "newValue": "...", "unit": "..."}]}` },
+              ],
+              response_format: { type: "json_schema", json_schema: { name: "changes", strict: true, schema: { type: "object", properties: { changes: { type: "array", items: { type: "object", properties: { fieldName: { type: "string" }, oldValue: { type: "string" }, newValue: { type: "string" }, unit: { type: "string" } }, required: ["fieldName", "oldValue", "newValue", "unit"], additionalProperties: false } } }, required: ["changes"], additionalProperties: false } } },
+            });
+            const parsed = JSON.parse(String(changeExtractionResponse.choices[0]?.message?.content ?? "{}")) as { changes: typeof changesToApply };
+            changesToApply = (parsed.changes ?? []).filter(c => c.newValue && c.newValue.trim() !== "" && c.oldValue !== c.newValue);
+          } catch (e) {
+            console.warn("[ReGenerate] LLM extraction failed:", e);
+          }
+        }
+
+        if (changesToApply.length === 0) {
+          return { success: false, message: "No changes could be identified. Please upload old and new manuals to enable document modification." };
+        }
+
+        const modResult = await modifyDocument({
+          fileUrl: doc.fileUrl,
+          fileName: doc.fileName,
+          mimeType: doc.mimeType ?? "application/octet-stream",
+          documentName: doc.name,
+          originalFileKey: doc.fileKey ?? "",
+          changes: changesToApply,
+        });
+        await updateDraftModifiedFile(input.draftId, modResult.modifiedFileUrl, modResult.modifiedFileKey, JSON.stringify(modResult.changeLog));
+        return { success: true, changesApplied: modResult.changesApplied, message: `Modified file generated with ${modResult.changesApplied} change(s) applied.` };
+      }),
   }),
 });
 

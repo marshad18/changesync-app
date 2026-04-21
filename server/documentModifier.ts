@@ -61,6 +61,7 @@ function normalizeValue(val: string): string {
 /**
  * Check if a cell value matches an old value from the change list.
  * Supports exact match, substring match (for longer descriptions), and numeric match.
+ * If oldValue is empty, this is a "new addition" — handled separately in modifyExcel.
  */
 function matchesOldValue(cellStr: string, oldValue: string): boolean {
   if (!oldValue || oldValue.trim() === "") return false;
@@ -75,11 +76,30 @@ function matchesOldValue(cellStr: string, oldValue: string): boolean {
   if (old.length >= 3 && cell.includes(old)) return true;
 
   // Numeric match — "1.5" matches "1.5 kW", "1440" matches "1440 rpm"
-  const numOld = parseFloat(old);
-  const numCell = parseFloat(cell);
+  // Strip commas and units before comparing (handles "1,440 RPM" vs "1440")
+  const stripUnits = (s: string) => s.replace(/[,]/g, "").replace(/[a-z%°]+$/i, "").trim();
+  const numOld = parseFloat(stripUnits(old));
+  const numCell = parseFloat(stripUnits(cell));
   if (!isNaN(numOld) && !isNaN(numCell) && numOld === numCell && old.length >= 1) return true;
 
   return false;
+}
+
+/**
+ * Check if a cell's label/header (the cell to the left or above) matches the fieldName.
+ * Used to find the right cell for new-value-only additions.
+ */
+function fieldNameMatchesLabel(fieldName: string, label: string): boolean {
+  if (!fieldName || !label) return false;
+  const fn = normalizeValue(fieldName);
+  const lb = normalizeValue(label);
+  // Direct containment
+  if (lb.includes(fn) || fn.includes(lb)) return true;
+  // Word overlap: at least 2 significant words in common
+  const fnWords = fn.split(/\s+/).filter(w => w.length > 3);
+  const lbWords = lb.split(/\s+/).filter(w => w.length > 3);
+  const overlap = fnWords.filter(w => lbWords.includes(w));
+  return overlap.length >= 1 && fnWords.length > 0;
 }
 
 /**
@@ -127,7 +147,27 @@ async function modifyExcel(
 
   const changeLog: CellChange[] = [];
 
+  // Separate changes into: (a) old-value replacements, (b) new-value-only additions
+  const replacementChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "" && c.newValue);
+  const additionChanges = changes.filter(c => (!c.oldValue || c.oldValue.trim() === "") && c.newValue);
+
+  // Track which addition changes have already been applied (by fieldName)
+  const appliedAdditions = new Set<string>();
+
   for (const worksheet of workbook.worksheets) {
+    // Build a map of row labels: for each row, the first non-empty cell is the label
+    const rowLabels = new Map<number, string>();
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      const firstCell = row.getCell(1);
+      if (firstCell?.value) {
+        const v = firstCell.value;
+        const label = typeof v === "object" && v !== null && "richText" in v
+          ? (v as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("")
+          : String(v);
+        if (label.trim()) rowLabels.set(rowNumber, label.trim());
+      }
+    });
+
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
         const cellValue = cell.value;
@@ -143,12 +183,11 @@ async function modifyExcel(
           cellStr = String(cellValue);
         }
 
-        for (const change of changes) {
-          if (!change.oldValue || !change.newValue) continue;
+        // --- Pass 1: Apply old-value replacement changes ---
+        for (const change of replacementChanges) {
           if (matchesOldValue(cellStr, change.oldValue)) {
             const newVal = buildNewValue(cellValue as string | number | boolean | Date | null, change.oldValue, change.newValue, change.unit);
 
-            // Record the change
             const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
             changeLog.push({
               sheetName: worksheet.name,
@@ -159,25 +198,40 @@ async function modifyExcel(
               colIndex: colNumber,
             });
 
-            // Apply new value
             cell.value = newVal;
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+            cell.font = cell.font ? { ...cell.font, bold: true } : { bold: true };
+            break;
+          }
+        }
 
-            // Apply yellow highlight — preserve existing font/border/alignment
-            const existingFill = cell.fill;
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: "FFFFFF00" }, // bright yellow
-            };
-
-            // Make the text bold to draw attention
-            if (cell.font) {
-              cell.font = { ...cell.font, bold: true };
-            } else {
-              cell.font = { bold: true };
+        // --- Pass 2: Apply new-value-only addition changes ---
+        // Find the right cell by matching the row label to the fieldName.
+        // Only apply to value cells (col >= 2) to avoid overwriting labels.
+        if (colNumber >= 2) {
+          const rowLabel = rowLabels.get(rowNumber) ?? "";
+          for (const change of additionChanges) {
+            if (appliedAdditions.has(change.fieldName)) continue;
+            if (fieldNameMatchesLabel(change.fieldName, rowLabel)) {
+              // Only write if the cell is currently empty or has a placeholder
+              const isEmpty = !cellStr || cellStr.trim() === "" || cellStr === "-" || cellStr === "N/A";
+              if (isEmpty) {
+                const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
+                changeLog.push({
+                  sheetName: worksheet.name,
+                  cellRef,
+                  oldValue: cellStr || "(empty)",
+                  newValue: `${change.newValue}${change.unit ? " " + change.unit : ""}`,
+                  rowIndex: rowNumber,
+                  colIndex: colNumber,
+                });
+                cell.value = `${change.newValue}${change.unit ? " " + change.unit : ""}`;
+                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+                cell.font = cell.font ? { ...cell.font, bold: true } : { bold: true };
+                appliedAdditions.add(change.fieldName);
+                break;
+              }
             }
-
-            break; // Only apply the first matching change per cell
           }
         }
       });

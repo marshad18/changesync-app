@@ -327,3 +327,10 @@ export async function updateDraftModifiedFile(id: number, modifiedFileUrl: strin
   if (!db) throw new Error("Database not available");
   await db.update(documentDrafts).set({ modifiedFileUrl, modifiedFileKey, changeLog }).where(eq(documentDrafts.id, id));
 }
+
+export async function getDraftByImpactAnalysisId(impactAnalysisId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(documentDrafts).where(eq(documentDrafts.impactAnalysisId, impactAnalysisId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}

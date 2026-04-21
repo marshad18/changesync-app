@@ -245,3 +245,12 @@
 - [x] DraftReview: replace ChangeLogTable with ChangeAnnotationPanel — rich visual cards with #number, location, Before (strikethrough), arrow, After (yellow highlight)
 - [x] DraftReview right panel header: updated subtitle "Same document as left — only changed values are updated & highlighted in yellow"
 - [x] DraftReview right panel header: renamed "Modified Document" → "Updated Document" for clarity
+
+## Document Pipeline Fixes (Apr 21 2026)
+- [x] Fix draft selection bug: use getDraftByImpactAnalysisId instead of allDrafts[last] — was assigning modifiedFileUrl to wrong draft
+- [x] Fix manualComparison filter: allow empty oldValue for new-value-only additions
+- [x] Fix documentModifier: fuzzy numeric matching (strips commas/units before comparing), new-value-only additions via fieldNameMatchesLabel
+- [x] Fix generateDrafts: allow empty oldValue in LLM extraction filter
+- [x] Add reGenerateModifiedFile tRPC procedure for re-triggering modification on existing drafts
+- [x] Add "Generate Modified File" / "Re-generate" button to DraftReview right panel header
+- [x] Add TRPCError import to routers.ts
