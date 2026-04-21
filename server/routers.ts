@@ -222,7 +222,8 @@ export const appRouter = router({
       if (!event) throw new Error("Change event not found");
       await updateChangeEventStatus(input.changeEventId, "generating_drafts");
       const [skus, analyses] = await Promise.all([getSkuChangesByEventId(input.changeEventId), getImpactAnalysesByEventId(input.changeEventId)]);
-      const impactedAnalyses = analyses.filter(a => a.impacted && a.status !== "dismissed");
+      // All impacted analyses are processed — no manual confirmation step required
+      const impactedAnalyses = analyses.filter(a => a.impacted);
       const changeTypeLabel = CHANGE_TYPE_LABELS[event.changeType] || event.changeType;
       const skuSummary = skus.length > 0 ? skus.map(s => `${s.fieldName}: ${s.oldValue ?? "N/A"} → ${s.newValue ?? "N/A"}${s.unit ? " "+s.unit : ""}`).join("; ") : "None";
       let changeContext = "";

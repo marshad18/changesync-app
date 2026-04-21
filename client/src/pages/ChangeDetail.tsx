@@ -4,8 +4,8 @@ import { useLocation, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Loader2, Zap, FileText, CheckCircle2, XCircle,
-  Eye, AlertTriangle, Clock, Weight, DollarSign, Package, Send,
+  ArrowLeft, Loader2, Zap, FileText, CheckCircle2,
+  Eye, AlertTriangle, Weight, DollarSign, Package, Send, Clock,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 import ChangeProgressStepper, { WorkflowStep } from "@/components/ChangeProgressStepper";
@@ -449,22 +449,7 @@ export default function ChangeDetail() {
                               >
                                 {analysis.confidence} confidence
                               </span>
-                              {analysis.status === "confirmed" && (
-                                <span
-                                  className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold"
-                                  style={{ background: "oklch(0.92 0.12 145 / 0.40)", color: "oklch(0.42 0.16 145)", border: "1px solid oklch(0.65 0.18 145 / 0.30)" }}
-                                >
-                                  ✓ Confirmed
-                                </span>
-                              )}
-                              {analysis.status === "dismissed" && (
-                                <span
-                                  className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold"
-                                  style={{ background: "oklch(0.94 0.008 255)", color: "oklch(0.50 0.04 255)", border: "1px solid oklch(0.86 0.010 255)" }}
-                                >
-                                  Dismissed
-                                </span>
-                              )}
+
                             </div>
                             <p className="text-sm text-muted-foreground leading-relaxed">{analysis.reasoning}</p>
                             {isExpanded && analysis.impactedSections && (
@@ -495,26 +480,6 @@ export default function ChangeDetail() {
                             {isExpanded ? "Show less ↑" : "Show details ↓"}
                           </button>
                           <div className="flex items-center gap-2">
-                            {analysis.status === "pending" && (
-                              <>
-                                <button
-                                  onClick={() => handleConfirm(analysis.id, "confirmed")}
-                                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-                                  style={{ background: "oklch(0.92 0.12 145 / 0.30)", color: "oklch(0.42 0.16 145)", border: "1px solid oklch(0.65 0.18 145 / 0.30)" }}
-                                  title="Confirm impact"
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" /> Confirm
-                                </button>
-                                <button
-                                  onClick={() => handleConfirm(analysis.id, "dismissed")}
-                                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-                                  style={{ background: "oklch(0.96 0.008 25 / 0.30)", color: "oklch(0.50 0.16 25)", border: "1px solid oklch(0.75 0.14 25 / 0.30)" }}
-                                  title="Dismiss"
-                                >
-                                  <XCircle className="h-3.5 w-3.5" /> Dismiss
-                                </button>
-                              </>
-                            )}
                             {draft && (
                               <Button
                                 size="sm"

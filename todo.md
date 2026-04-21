@@ -254,3 +254,12 @@
 - [x] Add reGenerateModifiedFile tRPC procedure for re-triggering modification on existing drafts
 - [x] Add "Generate Modified File" / "Re-generate" button to DraftReview right panel header
 - [x] Add TRPCError import to routers.ts
+
+## UX + Viewer Fixes (Apr 21 2026)
+- [x] Remove confirm/dismiss buttons from impact analysis — AI decision is final, no user confirmation step
+- [x] Auto-mark all AI-impacted docs as confirmed so generateDrafts runs on all of them without user action
+- [x] Fix split-view left panel: always show the original Document Library file (Word/Excel/PDF) via inline viewer
+- [x] Fix split-view right panel: always show the modified file (Word/Excel/PDF) via inline viewer with yellow highlights
+- [x] Add Word (.docx) modification support using mammoth (extraction) + docx (rebuild with yellow highlights)
+- [x] Add Word text extraction to extractDocumentContent for LLM impact analysis
+- [x] Ensure Office viewer (view.officeapps.live.com) is used for .docx/.xlsx files on both panels

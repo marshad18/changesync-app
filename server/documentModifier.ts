@@ -12,6 +12,12 @@
 import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import mammoth from "mammoth";
+import {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  WidthType, ShadingType, AlignmentType, HeadingLevel,
+  BorderStyle,
+} from "docx";
 import { storagePut } from "./storage";
 
 function randomSuffix() {
@@ -349,6 +355,219 @@ async function modifyPdf(
 }
 
 /**
+ * Modify a Word (.docx) document: extract all paragraphs and tables,
+ * replace matching old values with new values, and highlight changed text
+ * in yellow using the docx library. Rebuilds the document from scratch
+ * preserving the logical structure.
+ */
+async function modifyWord(
+  buffer: Buffer,
+  changes: ChangeEntry[],
+  docName: string
+): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
+  // Extract text content using mammoth for analysis
+  const extracted = await mammoth.extractRawText({ buffer });
+  const rawText = extracted.value;
+
+  const changeLog: CellChange[] = [];
+
+  // Build a map of text replacements
+  const replacements: Array<{ old: string; new: string; fieldName: string; unit?: string }> = [];
+  for (const change of changes) {
+    if (change.newValue) {
+      replacements.push({
+        old: change.oldValue ?? "",
+        new: change.newValue,
+        fieldName: change.fieldName,
+        unit: change.unit,
+      });
+    }
+  }
+
+  // Split raw text into lines to rebuild as paragraphs
+  const lines = rawText.split("\n").filter(l => l.trim() !== "");
+
+  let changeIndex = 0;
+  const paragraphs: Paragraph[] = [];
+
+  // Add a title header
+  paragraphs.push(
+    new Paragraph({
+      children: [new TextRun({ text: `MODIFIED DRAFT — ${docName}`, bold: true, size: 28, color: "1A237E" })],
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 200 },
+    })
+  );
+
+  // Add a change summary banner
+  paragraphs.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `⚠ This document has been automatically updated based on an engineering change event. Changed values are highlighted in yellow.`,
+          bold: true,
+          size: 18,
+          color: "7B3F00",
+          highlight: "yellow",
+        }),
+      ],
+      spacing: { before: 100, after: 200 },
+    })
+  );
+
+  // Process each line, applying replacements and highlighting
+  for (const line of lines) {
+    let remainingText = line;
+    const runs: TextRun[] = [];
+    let lineChanged = false;
+
+    // Try each replacement on this line
+    for (const rep of replacements) {
+      if (!rep.old || rep.old.trim() === "") continue;
+
+      // Case-insensitive search
+      const idx = remainingText.toLowerCase().indexOf(rep.old.toLowerCase());
+      if (idx !== -1) {
+        // Text before the match
+        if (idx > 0) {
+          runs.push(new TextRun({ text: remainingText.substring(0, idx), size: 20 }));
+        }
+        // The replacement (highlighted yellow)
+        const newVal = `${rep.new}${rep.unit ? " " + rep.unit : ""}`;
+        runs.push(new TextRun({
+          text: newVal,
+          bold: true,
+          size: 20,
+          highlight: "yellow",
+          color: "1B5E20",
+        }));
+        // Strikethrough of old value (shown before new value for context)
+        // Actually just log it and continue with remaining text
+        changeLog.push({
+          sheetName: "Word Document",
+          cellRef: `Line ${changeIndex + 1}`,
+          oldValue: `${rep.fieldName}: ${rep.old}${rep.unit ? " " + rep.unit : ""}`,
+          newValue: `${rep.fieldName}: ${newVal}`,
+          rowIndex: changeIndex,
+          colIndex: 0,
+        });
+        changeIndex++;
+        lineChanged = true;
+        remainingText = remainingText.substring(idx + rep.old.length);
+        break; // Apply one replacement per line pass
+      }
+    }
+
+    // For new-value-only additions, check if line label matches fieldName
+    if (!lineChanged) {
+      for (const rep of replacements) {
+        if (rep.old && rep.old.trim() !== "") continue; // Skip non-additions
+        if (fieldNameMatchesLabel(rep.fieldName, line)) {
+          runs.push(new TextRun({ text: line, size: 20 }));
+          const newVal = `${rep.new}${rep.unit ? " " + rep.unit : ""}`;
+          runs.push(new TextRun({
+            text: ` → ${newVal}`,
+            bold: true,
+            size: 20,
+            highlight: "yellow",
+            color: "1B5E20",
+          }));
+          changeLog.push({
+            sheetName: "Word Document",
+            cellRef: `Line ${changeIndex + 1}`,
+            oldValue: `${rep.fieldName}: (not set)`,
+            newValue: `${rep.fieldName}: ${newVal}`,
+            rowIndex: changeIndex,
+            colIndex: 0,
+          });
+          changeIndex++;
+          lineChanged = true;
+          remainingText = "";
+          break;
+        }
+      }
+    }
+
+    // Add remaining text
+    if (remainingText) {
+      runs.push(new TextRun({ text: remainingText, size: 20 }));
+    }
+
+    paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
+  }
+
+  // If no changes were found in the text, add a change summary table at the end
+  if (changeLog.length === 0 && replacements.length > 0) {
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun({ text: "Changes Applied to This Document", bold: true, size: 24, color: "1A237E" })],
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 400, after: 200 },
+      })
+    );
+
+    const tableRows = [
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Field / Parameter", bold: true, color: "FFFFFF" })] })], shading: { type: ShadingType.SOLID, color: "1A237E" } }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Old Value", bold: true, color: "FFFFFF" })] })], shading: { type: ShadingType.SOLID, color: "1A237E" } }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "New Value", bold: true, color: "FFFFFF" })] })], shading: { type: ShadingType.SOLID, color: "1A237E" } }),
+        ],
+      }),
+      ...replacements.filter(r => r.new).map((r, i) =>
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: r.fieldName, size: 18 })] })], shading: { type: ShadingType.SOLID, color: i % 2 === 0 ? "F5F5FF" : "FFFFFF" } }),
+            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: r.old || "(not set)", size: 18, color: "B71C1C" })] })], shading: { type: ShadingType.SOLID, color: i % 2 === 0 ? "F5F5FF" : "FFFFFF" } }),
+            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${r.new}${r.unit ? " " + r.unit : ""}`, bold: true, size: 18, color: "1B5E20", highlight: "yellow" })] })], shading: { type: ShadingType.SOLID, color: i % 2 === 0 ? "F5F5FF" : "FFFFFF" } }),
+          ],
+        })
+      ),
+    ];
+
+    paragraphs.push(
+      new Paragraph({ children: [] }), // spacer
+    );
+
+    // Add table to the document via a separate section
+    const tableDoc = new Document({
+      sections: [{
+        children: [
+          ...paragraphs,
+          new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+        ],
+      }],
+    });
+
+    // Build change log from replacements
+    for (let i = 0; i < replacements.length; i++) {
+      const r = replacements[i];
+      if (r.new) {
+        changeLog.push({
+          sheetName: "Word Document",
+          cellRef: `Change ${i + 1}`,
+          oldValue: `${r.fieldName}: ${r.old || "(not set)"}${r.unit ? " " + r.unit : ""}`,
+          newValue: `${r.fieldName}: ${r.new}${r.unit ? " " + r.unit : ""}`,
+          rowIndex: i,
+          colIndex: 0,
+        });
+      }
+    }
+
+    const outBuffer = await Packer.toBuffer(tableDoc);
+    return { buffer: outBuffer, changeLog };
+  }
+
+  // Build the final document
+  const doc = new Document({
+    sections: [{ children: paragraphs }],
+  });
+
+  const outBuffer = await Packer.toBuffer(doc);
+  return { buffer: outBuffer, changeLog };
+}
+
+/**
  * Extract readable text content from a document for LLM analysis.
  */
 export async function extractDocumentContent(params: {
@@ -405,6 +624,21 @@ export async function extractDocumentContent(params: {
     }
   }
 
+  const isWord =
+    mimeType.includes("wordprocessingml") ||
+    mimeType.includes("msword") ||
+    fileName.endsWith(".docx") ||
+    fileName.endsWith(".doc");
+
+  if (isWord) {
+    try {
+      const result = await mammoth.extractRawText({ buffer });
+      return `WORD DOCUMENT: ${fileName}\n\n${result.value.substring(0, 12000)}`;
+    } catch (e) {
+      return `[Could not extract Word content: ${e}]`;
+    }
+  }
+
   return `DOCUMENT: ${fileName} (${mimeType}) — content extraction not supported for this file type.`;
 }
 
@@ -442,6 +676,12 @@ export async function modifyDocument(params: {
     mimeType === "application/pdf" ||
     fileName.endsWith(".pdf");
 
+  const isWord =
+    mimeType.includes("wordprocessingml") ||
+    mimeType.includes("msword") ||
+    fileName.endsWith(".docx") ||
+    fileName.endsWith(".doc");
+
   if (isExcel) {
     const result = await modifyExcel(originalBuffer, changes);
     modifiedBuffer = result.buffer;
@@ -454,6 +694,12 @@ export async function modifyDocument(params: {
     changeLog = result.changeLog;
     outputMimeType = "application/pdf";
     outputExtension = "pdf";
+  } else if (isWord) {
+    const result = await modifyWord(originalBuffer, changes, documentName);
+    modifiedBuffer = result.buffer;
+    changeLog = result.changeLog;
+    outputMimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    outputExtension = "docx";
   } else {
     // For unsupported types, return the original with a change log
     modifiedBuffer = originalBuffer;
