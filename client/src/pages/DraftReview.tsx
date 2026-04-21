@@ -355,46 +355,9 @@ export default function DraftReview() {
   const [routeSuccess, setRouteSuccess] = useState<{approvalLink: string; emailSent: boolean} | null>(null);
 
   const { data, isLoading, refetch } = trpc.drafts.getById.useQuery({ id }, { enabled: !!id });
-  const approveMutation = trpc.drafts.approve.useMutation();
-  const rejectMutation = trpc.drafts.reject.useMutation();
-  const revisionMutation = trpc.drafts.requestRevision.useMutation();
   const updateContentMutation = trpc.drafts.updateContent.useMutation();
   const routeMutation = trpc.drafts.routeForApproval.useMutation();
   const reGenMutation = trpc.drafts.reGenerateModifiedFile.useMutation();
-
-  const handleApprove = async () => {
-    try {
-      await approveMutation.mutateAsync({ id, reviewNotes: reviewNotes || undefined });
-      await refetch();
-      toast.success("Draft approved!");
-    } catch {
-      toast.error("Failed to approve. Please try again.");
-    }
-  };
-
-  const handleReject = async () => {
-    try {
-      await rejectMutation.mutateAsync({ id, reviewNotes: reviewNotes || undefined });
-      await refetch();
-      toast.success("Draft rejected.");
-    } catch {
-      toast.error("Failed to reject. Please try again.");
-    }
-  };
-
-  const handleRequestRevision = async () => {
-    if (!reviewNotes.trim()) {
-      toast.error("Please add revision notes before requesting a revision.");
-      return;
-    }
-    try {
-      await revisionMutation.mutateAsync({ id, reviewNotes });
-      await refetch();
-      toast.success("Revision requested.");
-    } catch {
-      toast.error("Failed to request revision. Please try again.");
-    }
-  };
 
   const handleRouteForApproval = async () => {
     if (!approverEmail.trim()) {
@@ -491,6 +454,8 @@ export default function DraftReview() {
   const hasModifiedFile = !!(draft as { modifiedFileUrl?: string | null }).modifiedFileUrl;
   const modifiedFileUrl = (draft as { modifiedFileUrl?: string | null }).modifiedFileUrl ?? null;
   const status = draft.status ?? "pending_review";
+  // Only show the Route for Approval form when the draft is in a state where it hasn't been sent yet.
+  // Once routed, approved, or rejected — the form is hidden and only the status card is shown.
   const isActionable = status === "pending_review" || status === "revision_requested";
 
   function statusStyle(): React.CSSProperties {
@@ -1040,55 +1005,17 @@ export default function DraftReview() {
               )}
             </div>
 
-            <div className="pt-4 space-y-3" style={{ borderTop: "1px solid oklch(0.90 0.006 255)" }}>
-              <Label htmlFor="reviewNotes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Review Notes{" "}
-                <span className="text-muted-foreground/60 normal-case font-normal">
-                  (optional for approval, required for revision request)
-                </span>
-              </Label>
-              <Textarea
-                id="reviewNotes"
-                placeholder="Add any comments, corrections, or instructions for revision…"
-                value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
-                rows={3}
-                className="resize-none text-sm bg-background border-border text-foreground placeholder:text-muted-foreground/50"
-              />
-            </div>
-
-            <div className="flex gap-3 flex-wrap pt-1">
-              <Button
-                onClick={handleApprove}
-                disabled={approveMutation.isPending}
-                className="gap-2"
-                style={{
-                  background: "linear-gradient(135deg, oklch(0.50 0.16 145), oklch(0.44 0.14 155))",
-                  border: "none",
-                  boxShadow: "0 4px 12px oklch(0.50 0.16 145 / 0.3)",
-                }}
-              >
-                {approveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Approve
-              </Button>
-              <Button
-                onClick={handleRequestRevision}
-                disabled={revisionMutation.isPending}
-                variant="outline"
-                className="gap-2"
-              >
-                {revisionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                Request Revision
-              </Button>
-              <Button
-                onClick={handleReject}
-                disabled={rejectMutation.isPending}
-                variant="outline"
-                className="gap-2 text-destructive hover:text-destructive"
-              >
-                {rejectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                Reject
-              </Button>
+            {/* Info: only the approver can approve via their email link */}
+            <div
+              className="rounded-xl p-4 flex items-start gap-3"
+              style={{ background: "oklch(0.97 0.008 255)", border: "1px solid oklch(0.88 0.012 255)" }}
+            >
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "oklch(0.45 0.16 265)" }} />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <span className="font-semibold text-foreground">Approval is locked to the designated approver.</span>{" "}
+                Once you send the approval request above, the approver will receive a secure email link.
+                Only they can approve or reject this document — no one else can take that action.
+              </p>
             </div>
           </div>
         )}

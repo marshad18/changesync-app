@@ -263,3 +263,9 @@
 - [x] Add Word (.docx) modification support using mammoth (extraction) + docx (rebuild with yellow highlights)
 - [x] Add Word text extraction to extractDocumentContent for LLM impact analysis
 - [x] Ensure Office viewer (view.officeapps.live.com) is used for .docx/.xlsx files on both panels
+
+## Approval Security Fix (Apr 21 2026)
+- [x] Remove Approve/Reject buttons from DraftReview page — logged-in users must NOT be able to approve their own docs
+- [x] DraftReview action panel: shows Route for Approval form only; once routed shows status card only
+- [x] Only the token-based /approve page (linked in the email) allows approval — token is tied to the specific approver email
+- [x] Added clear info message: "Approval is locked to the designated approver"
