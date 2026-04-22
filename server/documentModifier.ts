@@ -22,7 +22,10 @@ import { storagePut } from "./storage";
 import { execSync } from "child_process";
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 function randomSuffix() {
   return Math.random().toString(36).substring(2, 10);
 }
@@ -411,7 +414,7 @@ async function annotateOriginalPdf(
     color: rgb(1.0, 0.93, 0.0),
     opacity: 0.9,
   });
-  firstPage.drawText("ORIGINAL — OLD VALUES HIGHLIGHTED", {
+  firstPage.drawText("ORIGINAL - OLD VALUES HIGHLIGHTED", {
     x: width - 232,
     y: height - 22,
     size: 8,
@@ -428,11 +431,24 @@ async function annotateOriginalPdf(
  * This is the RIGHT panel view — shows the updated document with new values highlighted.
  * Also appends a change summary page at the end.
  */
+/** Strip characters not encodable by WinAnsi (pdf-lib standard fonts only support Latin-1 subset) */
+function sanitizeForPdf(text: string): string {
+  return text
+    .replace(/[\u2014\u2013]/g, "-")  // em-dash, en-dash -> hyphen
+    .replace(/[\u2018\u2019]/g, "'")  // smart quotes
+    .replace(/[\u201c\u201d]/g, '"')  // smart double quotes
+    .replace(/[\u2026]/g, "...")       // ellipsis
+    .replace(/[\u2190-\u21ff]/g, ">") // arrows -> >
+    .replace(/[^\x00-\xff]/g, "?");   // anything else outside Latin-1
+}
+
 async function modifyPdf(
   buffer: Buffer,
   changes: ChangeEntry[],
   docName: string
 ): Promise<{ buffer: Buffer; cleanBuffer: Buffer; changeLog: CellChange[] }> {
+  // Sanitize docName to avoid WinAnsi encoding errors in pdf-lib
+  const safeDocName = sanitizeForPdf(docName);
   // Load two copies: one for the annotated view, one for the clean download
   const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
   const cleanPdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
@@ -475,7 +491,7 @@ async function modifyPdf(
         });
 
         // Draw the new value text in green, replacing the old
-        const newLabel = `${change.newValue}${change.unit ? " " + change.unit : ""}`;
+        const newLabel = sanitizeForPdf(`${change.newValue}${change.unit ? " " + change.unit : ""}`);
         const annotFontSize = Math.max(6, Math.min(10, boxH * 0.9));
         page.drawText(newLabel, {
           x: m.xMin,
@@ -485,9 +501,9 @@ async function modifyPdf(
           color: rgb(0.05, 0.45, 0.1),
         });
 
-        // Arrow + "NEW" label above
+        // "NEW" label above (ASCII-safe — WinAnsi cannot encode Unicode arrows)
         const labelFontSize = Math.max(5, Math.min(7, boxH * 0.7));
-        page.drawText("\u2193 NEW", {
+        page.drawText("> NEW", {
           x: m.xMin,
           y: pdfLibYMax + 2,
           size: labelFontSize,
@@ -540,7 +556,7 @@ async function modifyPdf(
     color: rgb(0.75, 1.0, 0.75),
     opacity: 0.9,
   });
-  firstPage.drawText("MODIFIED DRAFT — NEW VALUES", {
+  firstPage.drawText("MODIFIED DRAFT - NEW VALUES", {
     x: width - 155,
     y: height - 22,
     size: 8,
@@ -557,7 +573,7 @@ async function modifyPdf(
     x: margin, y, size: 16, font: helveticaBold, color: rgb(0.1, 0.17, 0.35),
   });
   y -= 20;
-  summaryPage.drawText(`Document: ${docName}`, {
+  summaryPage.drawText(`Document: ${safeDocName}`, {
     x: margin, y, size: 9, font: helvetica, color: rgb(0.4, 0.4, 0.4),
   });
   y -= 8;
@@ -591,9 +607,9 @@ async function modifyPdf(
     const rowBg = i % 2 === 0 ? rgb(0.96, 0.97, 1.0) : rgb(1, 1, 1);
     summaryPage.drawRectangle({ x: margin, y: y - 4, width: summaryPage.getWidth() - 2 * margin, height: 16, color: rowBg });
 
-    const label = c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "\u2026" : c.fieldName;
-    const oldVal = `${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`.substring(0, 22);
-    const newVal = `${c.newValue}${c.unit ? " " + c.unit : ""}`.substring(0, 22);
+    const label = sanitizeForPdf(c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "..." : c.fieldName);
+    const oldVal = sanitizeForPdf(`${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`).substring(0, 22);
+    const newVal = sanitizeForPdf(`${c.newValue}${c.unit ? " " + c.unit : ""}`).substring(0, 22);
 
     summaryPage.drawText(label, { x: col1 + 4, y, size: 8, font: helvetica, color: rgb(0.15, 0.15, 0.15) });
     summaryPage.drawText(oldVal, { x: col2 + 4, y, size: 8, font: helvetica, color: rgb(0.65, 0.1, 0.1) });
@@ -610,14 +626,14 @@ async function modifyPdf(
   let cy = cleanSummaryPage.getHeight() - margin;
   cleanSummaryPage.drawText("CHANGE SUMMARY", { x: margin, y: cy, size: 16, font: cleanHelveticaBold2, color: rgb(0.1, 0.17, 0.35) });
   cy -= 20;
-  cleanSummaryPage.drawText(`Document: ${docName}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.4, 0.4, 0.4) });
+  cleanSummaryPage.drawText(`Document: ${safeDocName}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.4, 0.4, 0.4) });
   cy -= 26;
   for (let i = 0; i < allChanges.length && cy > margin + 40; i++) {
     const c = allChanges[i];
-    const label = c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "\u2026" : c.fieldName;
-    const oldVal = `${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`;
-    const newVal = `${c.newValue}${c.unit ? " " + c.unit : ""}`;
-    cleanSummaryPage.drawText(`${label}: ${oldVal} \u2192 ${newVal}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.15, 0.15, 0.15) });
+    const label = sanitizeForPdf(c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "..." : c.fieldName);
+    const oldVal = sanitizeForPdf(`${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`);
+    const newVal = sanitizeForPdf(`${c.newValue}${c.unit ? " " + c.unit : ""}`);
+    cleanSummaryPage.drawText(`${label}: ${oldVal} -> ${newVal}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.15, 0.15, 0.15) });
     cy -= 16;
   }
 
@@ -627,216 +643,80 @@ async function modifyPdf(
 }
 
 /**
- * Modify a Word (.docx) document: extract all paragraphs and tables,
- * replace matching old values with new values, and highlight changed text
- * in yellow using the docx library. Rebuilds the document from scratch
- * preserving the logical structure.
+ * Run the Python wordModifier.py script on a buffer.
+ * mode: 'annotate_original' | 'modify_green' | 'modify_clean'
+ * Returns the output buffer, or null on failure.
+ */
+function runWordModifierPy(
+  inputBuffer: Buffer,
+  changes: ChangeEntry[],
+  mode: "annotate_original" | "modify_green" | "modify_clean"
+): Buffer | null {
+  const tmpIn = join(tmpdir(), `word-in-${randomSuffix()}.docx`);
+  const tmpOut = join(tmpdir(), `word-out-${randomSuffix()}.docx`);
+  try {
+    writeFileSync(tmpIn, inputBuffer);
+    const changesJson = JSON.stringify(
+      changes.map(c => ({ fieldName: c.fieldName, oldValue: c.oldValue ?? "", newValue: c.newValue ?? "", unit: c.unit ?? "" }))
+    );
+    const scriptPath = join(__dirname, "wordModifier.py");
+    const result = execSync(
+      `python3.11 "${scriptPath}" ${mode} "${tmpIn}" "${tmpOut}" '${changesJson.replace(/'/g, "'\\''")}' `,
+      { timeout: 60000, encoding: "utf8" }
+    );
+    console.log(`[WordModifier] ${mode} result: ${result.trim()}`);
+    if (existsSync(tmpOut)) {
+      return readFileSync(tmpOut);
+    }
+    return null;
+  } catch (e: unknown) {
+    // Exit code 2 means no matches found — still return the output file if it exists
+    if (existsSync(tmpOut)) {
+      return readFileSync(tmpOut);
+    }
+    console.error(`[WordModifier] ${mode} failed:`, e);
+    return null;
+  } finally {
+    if (existsSync(tmpIn)) unlinkSync(tmpIn);
+    if (existsSync(tmpOut)) unlinkSync(tmpOut);
+  }
+}
+
+/**
+ * Modify a Word (.docx) document using python-docx for TRUE in-place modification.
+ * Preserves all original formatting, tables, images, headers/footers.
+ * Produces three variants: annotated original (yellow), modified view (green), clean download.
  */
 async function modifyWord(
   buffer: Buffer,
   changes: ChangeEntry[],
-  docName: string
-): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
-  // Extract text content using mammoth for analysis
-  const extracted = await mammoth.extractRawText({ buffer });
-  const rawText = extracted.value;
+  _docName: string
+): Promise<{ buffer: Buffer; annotatedOriginalBuffer: Buffer | null; cleanBuffer: Buffer | null; changeLog: CellChange[] }> {
+  // Run all three variants in parallel
+  const [greenBuffer, annotatedBuffer, cleanBuffer] = await Promise.all([
+    Promise.resolve(runWordModifierPy(buffer, changes, "modify_green")),
+    Promise.resolve(runWordModifierPy(buffer, changes, "annotate_original")),
+    Promise.resolve(runWordModifierPy(buffer, changes, "modify_clean")),
+  ]);
 
-  const changeLog: CellChange[] = [];
+  // Build change log from changes (Python script doesn't return structured log)
+  const changeLog: CellChange[] = changes
+    .filter(c => c.oldValue && c.newValue)
+    .map((c, i) => ({
+      sheetName: "Word Document",
+      cellRef: `Change ${i + 1}`,
+      oldValue: `${c.fieldName}: ${c.oldValue}${c.unit ? " " + c.unit : ""}`,
+      newValue: `${c.fieldName}: ${c.newValue}${c.unit ? " " + c.unit : ""}`,
+      rowIndex: i,
+      colIndex: 0,
+    }));
 
-  // Build a map of text replacements
-  const replacements: Array<{ old: string; new: string; fieldName: string; unit?: string }> = [];
-  for (const change of changes) {
-    if (change.newValue) {
-      replacements.push({
-        old: change.oldValue ?? "",
-        new: change.newValue,
-        fieldName: change.fieldName,
-        unit: change.unit,
-      });
-    }
-  }
-
-  // Split raw text into lines to rebuild as paragraphs
-  const lines = rawText.split("\n").filter(l => l.trim() !== "");
-
-  let changeIndex = 0;
-  const paragraphs: Paragraph[] = [];
-
-  // Add a title header
-  paragraphs.push(
-    new Paragraph({
-      children: [new TextRun({ text: `MODIFIED DRAFT — ${docName}`, bold: true, size: 28, color: "1A237E" })],
-      heading: HeadingLevel.HEADING_1,
-      spacing: { after: 200 },
-    })
-  );
-
-  // Add a change summary banner
-  paragraphs.push(
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: `⚠ This document has been automatically updated based on an engineering change event. Changed values are highlighted in yellow.`,
-          bold: true,
-          size: 18,
-          color: "7B3F00",
-          highlight: "yellow",
-        }),
-      ],
-      spacing: { before: 100, after: 200 },
-    })
-  );
-
-  // Process each line, applying replacements and highlighting
-  for (const line of lines) {
-    let remainingText = line;
-    const runs: TextRun[] = [];
-    let lineChanged = false;
-
-    // Try each replacement on this line
-    for (const rep of replacements) {
-      if (!rep.old || rep.old.trim() === "") continue;
-
-      // Case-insensitive search
-      const idx = remainingText.toLowerCase().indexOf(rep.old.toLowerCase());
-      if (idx !== -1) {
-        // Text before the match
-        if (idx > 0) {
-          runs.push(new TextRun({ text: remainingText.substring(0, idx), size: 20 }));
-        }
-        // The replacement (highlighted yellow)
-        const newVal = `${rep.new}${rep.unit ? " " + rep.unit : ""}`;
-        runs.push(new TextRun({
-          text: newVal,
-          bold: true,
-          size: 20,
-          highlight: "yellow",
-          color: "1B5E20",
-        }));
-        // Strikethrough of old value (shown before new value for context)
-        // Actually just log it and continue with remaining text
-        changeLog.push({
-          sheetName: "Word Document",
-          cellRef: `Line ${changeIndex + 1}`,
-          oldValue: `${rep.fieldName}: ${rep.old}${rep.unit ? " " + rep.unit : ""}`,
-          newValue: `${rep.fieldName}: ${newVal}`,
-          rowIndex: changeIndex,
-          colIndex: 0,
-        });
-        changeIndex++;
-        lineChanged = true;
-        remainingText = remainingText.substring(idx + rep.old.length);
-        break; // Apply one replacement per line pass
-      }
-    }
-
-    // For new-value-only additions, check if line label matches fieldName
-    if (!lineChanged) {
-      for (const rep of replacements) {
-        if (rep.old && rep.old.trim() !== "") continue; // Skip non-additions
-        if (fieldNameMatchesLabel(rep.fieldName, line)) {
-          runs.push(new TextRun({ text: line, size: 20 }));
-          const newVal = `${rep.new}${rep.unit ? " " + rep.unit : ""}`;
-          runs.push(new TextRun({
-            text: ` → ${newVal}`,
-            bold: true,
-            size: 20,
-            highlight: "yellow",
-            color: "1B5E20",
-          }));
-          changeLog.push({
-            sheetName: "Word Document",
-            cellRef: `Line ${changeIndex + 1}`,
-            oldValue: `${rep.fieldName}: (not set)`,
-            newValue: `${rep.fieldName}: ${newVal}`,
-            rowIndex: changeIndex,
-            colIndex: 0,
-          });
-          changeIndex++;
-          lineChanged = true;
-          remainingText = "";
-          break;
-        }
-      }
-    }
-
-    // Add remaining text
-    if (remainingText) {
-      runs.push(new TextRun({ text: remainingText, size: 20 }));
-    }
-
-    paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
-  }
-
-  // If no changes were found in the text, add a change summary table at the end
-  if (changeLog.length === 0 && replacements.length > 0) {
-    paragraphs.push(
-      new Paragraph({
-        children: [new TextRun({ text: "Changes Applied to This Document", bold: true, size: 24, color: "1A237E" })],
-        heading: HeadingLevel.HEADING_2,
-        spacing: { before: 400, after: 200 },
-      })
-    );
-
-    const tableRows = [
-      new TableRow({
-        children: [
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Field / Parameter", bold: true, color: "FFFFFF" })] })], shading: { type: ShadingType.SOLID, color: "1A237E" } }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Old Value", bold: true, color: "FFFFFF" })] })], shading: { type: ShadingType.SOLID, color: "1A237E" } }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "New Value", bold: true, color: "FFFFFF" })] })], shading: { type: ShadingType.SOLID, color: "1A237E" } }),
-        ],
-      }),
-      ...replacements.filter(r => r.new).map((r, i) =>
-        new TableRow({
-          children: [
-            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: r.fieldName, size: 18 })] })], shading: { type: ShadingType.SOLID, color: i % 2 === 0 ? "F5F5FF" : "FFFFFF" } }),
-            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: r.old || "(not set)", size: 18, color: "B71C1C" })] })], shading: { type: ShadingType.SOLID, color: i % 2 === 0 ? "F5F5FF" : "FFFFFF" } }),
-            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${r.new}${r.unit ? " " + r.unit : ""}`, bold: true, size: 18, color: "1B5E20", highlight: "yellow" })] })], shading: { type: ShadingType.SOLID, color: i % 2 === 0 ? "F5F5FF" : "FFFFFF" } }),
-          ],
-        })
-      ),
-    ];
-
-    paragraphs.push(
-      new Paragraph({ children: [] }), // spacer
-    );
-
-    // Add table to the document via a separate section
-    const tableDoc = new Document({
-      sections: [{
-        children: [
-          ...paragraphs,
-          new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
-        ],
-      }],
-    });
-
-    // Build change log from replacements
-    for (let i = 0; i < replacements.length; i++) {
-      const r = replacements[i];
-      if (r.new) {
-        changeLog.push({
-          sheetName: "Word Document",
-          cellRef: `Change ${i + 1}`,
-          oldValue: `${r.fieldName}: ${r.old || "(not set)"}${r.unit ? " " + r.unit : ""}`,
-          newValue: `${r.fieldName}: ${r.new}${r.unit ? " " + r.unit : ""}`,
-          rowIndex: i,
-          colIndex: 0,
-        });
-      }
-    }
-
-    const outBuffer = await Packer.toBuffer(tableDoc);
-    return { buffer: outBuffer, changeLog };
-  }
-
-  // Build the final document
-  const doc = new Document({
-    sections: [{ children: paragraphs }],
-  });
-
-  const outBuffer = await Packer.toBuffer(doc);
-  return { buffer: outBuffer, changeLog };
+  return {
+    buffer: greenBuffer ?? buffer,  // right panel: green highlights
+    annotatedOriginalBuffer: annotatedBuffer,  // left panel: yellow highlights on original
+    cleanBuffer: cleanBuffer,  // download: no highlights
+    changeLog,
+  };
 }
 
 /**
@@ -988,6 +868,9 @@ export async function modifyDocument(params: {
     const result = await modifyWord(originalBuffer, changes, documentName);
     modifiedBuffer = result.buffer;
     changeLog = result.changeLog;
+    // Word also produces three variants now
+    if (result.annotatedOriginalBuffer) annotatedOriginalBuffer = result.annotatedOriginalBuffer;
+    if (result.cleanBuffer) cleanModifiedBuffer = result.cleanBuffer;
     outputMimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     outputExtension = "docx";
   } else {

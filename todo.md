@@ -280,3 +280,20 @@
 - [x] Update left panel header badge: "Old values highlighted" label when annotatedOriginalUrl is present
 - [x] Update right panel legend: "Green = new values" + "Download = clean (no highlights)"
 - [x] Update vitest tests: modifyDocument mock includes new annotatedOriginalUrl/cleanModifiedUrl fields
+
+## Word Document In-Place Modification Fix (Apr 22 2026)
+- [ ] Fix modifyWord: use python-docx via child_process to do TRUE in-place modification on the original .docx file — preserve all original formatting, tables, images, headers/footers
+- [ ] annotateOriginalWord: annotate original .docx with YELLOW highlights over old values (left panel)
+- [ ] modifyWordInPlace: produce GREEN highlights on new values in modified .docx (right panel view)
+- [ ] cleanModifyWord: produce clean .docx with text replaced but NO highlight colors (download)
+- [ ] Ensure all three Word variants are uploaded to S3 and stored in annotatedOriginalUrl/modifiedFileUrl/cleanModifiedUrl
+- [ ] Fix DraftReview: left panel shows annotated original (yellow), right panel shows modified (green), download is clean
+
+## Word & PDF Annotation Fix (Apr 22 2026)
+- [x] Replace from-scratch Word rebuilder with python-docx in-place modifier (wordModifier.py)
+- [x] Fix search term priority: try compound terms (155g, 155 g) before bare value (155)
+- [x] Produce three Word variants: annotated original (yellow), modified view (green), clean download
+- [x] Fix PDF WinAnsi encoding errors: replace all non-ASCII chars in drawText calls (em-dash, arrows, ellipsis)
+- [x] Add sanitizeForPdf() helper to strip non-Latin-1 characters from all dynamic text in pdf-lib drawText
+- [x] Fix __dirname in documentModifier.ts (ESM context - use import.meta.url)
+- [x] All 31 tests pass, TypeScript compiles cleanly
