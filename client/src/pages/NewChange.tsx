@@ -96,24 +96,15 @@ export default function NewChange() {
 
   const selectedType = CHANGE_TYPE_OPTIONS.find((t) => t.id === changeType);
 
-  const canProceedStep1 =
-    changeType !== "" &&
-    title.trim() !== "" &&
-    (changeType !== "part_change" || (oldFile !== null && newFile !== null)) &&
-    (changeType !== "weight_change" || (oldValue.trim() && newValue.trim() && oldSku.trim() && newSku.trim())) &&
-    (changeType !== "price_change" || (oldValue.trim() && newValue.trim() && oldSku.trim() && newSku.trim()));
+  const canProceedStep1 = true;
 
   const handleSubmit = async () => {
-    if (!changeType || !title.trim()) {
-      toast.error("Please fill in all required fields.");
-      return;
-    }
     setSubmitting(true);
     try {
       // Build a descriptive title if not set
       const event = await createMutation.mutateAsync({
-        title,
-        changeType,
+        title: title || "Untitled Change",
+        changeType: (changeType || "part_change") as any,
         partSubType: changeType === "part_change" ? partSubType : undefined,
         textNotes: textNotes || undefined,
       });
