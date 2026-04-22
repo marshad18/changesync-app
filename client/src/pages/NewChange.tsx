@@ -233,7 +233,7 @@ export default function NewChange() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="title" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Event Title <span className="text-destructive">*</span>
+              Event Title
             </Label>
             <Input
               id="title"
@@ -334,7 +334,7 @@ export default function NewChange() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Old {subTypeLabel} <span className="text-destructive">*</span>
+                  Old {subTypeLabel}
                 </Label>
                 {/* Mode toggle — only for Image sub-type */}
                 {partSubType === "image" && !oldFile && webcamSlot !== "old" && (
@@ -437,7 +437,7 @@ export default function NewChange() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  New {subTypeLabel} <span className="text-destructive">*</span>
+                  New {subTypeLabel}
                 </Label>
                 {/* Mode toggle — only for Image sub-type */}
                 {partSubType === "image" && !newFile && webcamSlot !== "new" && (
@@ -551,7 +551,7 @@ export default function NewChange() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Old Weight <span className="text-destructive">*</span>
+                  Old Weight
                 </Label>
                 <Input
                   placeholder="e.g., 500g"
@@ -562,7 +562,7 @@ export default function NewChange() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  New Weight <span className="text-destructive">*</span>
+                  New Weight
                 </Label>
                 <Input
                   placeholder="e.g., 450g"
@@ -575,7 +575,7 @@ export default function NewChange() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Old SKU Code <span className="text-destructive">*</span>
+                  Old SKU Code
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-A"
@@ -586,7 +586,7 @@ export default function NewChange() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  New SKU Code <span className="text-destructive">*</span>
+                  New SKU Code
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-B"
@@ -632,7 +632,7 @@ export default function NewChange() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Old Price <span className="text-destructive">*</span>
+                  Old Price
                 </Label>
                 <Input
                   placeholder="e.g., $4.99"
@@ -643,7 +643,7 @@ export default function NewChange() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  New Price <span className="text-destructive">*</span>
+                  New Price
                 </Label>
                 <Input
                   placeholder="e.g., $5.49"
@@ -656,7 +656,7 @@ export default function NewChange() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Old SKU Code <span className="text-destructive">*</span>
+                  Old SKU Code
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-A"
@@ -667,7 +667,7 @@ export default function NewChange() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  New SKU Code <span className="text-destructive">*</span>
+                  New SKU Code
                 </Label>
                 <Input
                   placeholder="e.g., SKU-001-B"
