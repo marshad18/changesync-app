@@ -10,6 +10,10 @@
 
 import * as XLSX from "xlsx";
 import { invokeLLM } from "./_core/llm";
+import { execSync } from "child_process";
+import { writeFileSync, unlinkSync, existsSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 export interface ChangeEntry {
   fieldName: string;
@@ -28,18 +32,19 @@ async function downloadFile(url: string): Promise<Buffer> {
 }
 
 /**
- * Extract readable text from a PDF using pdf-parse (real text extraction).
+ * Extract readable text from a PDF using pdftotext CLI (poppler-utils).
+ * Much more reliable than pdf-parse for complex PDFs.
  */
-async function extractPdfText(buffer: Buffer): Promise<string> {
+function extractPdfText(buffer: Buffer): string {
+  const tmpFile = join(tmpdir(), `pdfextract-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
   try {
-    // Dynamic import to avoid issues if pdf-parse is not installed
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
-    const result = await pdfParse(buffer);
-    // Cap at 8000 chars to stay within LLM context limits
-    return result.text.substring(0, 8000);
+    writeFileSync(tmpFile, buffer);
+    const text = execSync(`pdftotext -layout "${tmpFile}" -`, { maxBuffer: 10 * 1024 * 1024 }).toString();
+    return text.substring(0, 12000);
   } catch (e) {
     return `[PDF text extraction failed: ${e}]`;
+  } finally {
+    if (existsSync(tmpFile)) unlinkSync(tmpFile);
   }
 }
 
@@ -76,7 +81,8 @@ export async function extractFileText(fileUrl: string, fileName: string): Promis
   const name = fileName.toLowerCase();
 
   if (name.endsWith(".pdf")) {
-    return extractPdfText(buffer);
+    // extractPdfText is now synchronous (uses pdftotext CLI)
+    return Promise.resolve(extractPdfText(buffer));
   }
   if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
     return extractExcelText(buffer);

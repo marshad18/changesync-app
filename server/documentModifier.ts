@@ -19,7 +19,10 @@ import {
   BorderStyle,
 } from "docx";
 import { storagePut } from "./storage";
-
+import { execSync } from "child_process";
+import { writeFileSync, unlinkSync, existsSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 function randomSuffix() {
   return Math.random().toString(36).substring(2, 10);
 }
@@ -615,10 +618,15 @@ export async function extractDocumentContent(params: {
 
   if (isPdf) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
-      const result = await pdfParse(buffer);
-      return `PDF DOCUMENT: ${fileName}\n\n${result.text.substring(0, 10000)}`;
+      const tmpFile = join(tmpdir(), `pdfmod-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+      writeFileSync(tmpFile, buffer);
+      let text = "";
+      try {
+        text = execSync(`pdftotext -layout "${tmpFile}" -`, { maxBuffer: 10 * 1024 * 1024 }).toString();
+      } finally {
+        if (existsSync(tmpFile)) unlinkSync(tmpFile);
+      }
+      return `PDF DOCUMENT: ${fileName}\n\n${text.substring(0, 10000)}`;
     } catch (e) {
       return `[Could not extract PDF content: ${e}]`;
     }
