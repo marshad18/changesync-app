@@ -2,14 +2,13 @@
  * ApprovalPage — public page (no login required) that approvers land on
  * when they click the link in the approval email.
  *
- * URL format: /approve?token=<hex>&action=approve|reject
+ * URL format: /approve?token=<hex>
  *
- * The page:
- *  1. Reads the token from the URL
- *  2. Fetches draft info via drafts.getByToken (public procedure)
- *  3. Shows the change summary and document details
- *  4. Lets the approver confirm approve or reject (with optional notes)
- *  5. Calls drafts.approveByToken mutation
+ * Layout:
+ *  1. Header (ChangeSync branding + change summary)
+ *  2. Full-width split panel: LEFT = original doc (yellow highlights), RIGHT = modified doc (green highlights)
+ *  3. Change log table (what changed)
+ *  4. Approve / Reject form with notes — all on the same page, no separate clicks
  */
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
@@ -19,12 +18,114 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   CheckCircle2, XCircle, Loader2, FileText, AlertCircle,
-  ArrowRight, Building2, ClipboardList,
+  ArrowRight, Building2, Download,
 } from "lucide-react";
 
 function getQueryParam(key: string): string {
   const params = new URLSearchParams(window.location.search);
   return params.get(key) ?? "";
+}
+
+/** Render a document URL in an iframe (PDF/Word) or as an image */
+function DocPanel({
+  url,
+  label,
+  badge,
+  badgeColor,
+  fileName,
+}: {
+  url: string | null | undefined;
+  label: string;
+  badge: string;
+  badgeColor: string;
+  fileName?: string | null;
+}) {
+  if (!url) {
+    return (
+      <div className="flex flex-col h-full">
+        <div
+          className="flex items-center justify-between px-4 py-2.5 shrink-0"
+          style={{ background: "oklch(0.975 0.004 250)", borderBottom: "1px solid oklch(0.88 0.008 255)" }}
+        >
+          <p className="text-xs font-semibold text-foreground">{label}</p>
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: badgeColor, color: "#fff" }}>
+            {badge}
+          </span>
+        </div>
+        <div className="flex-1 flex items-center justify-center" style={{ background: "oklch(0.97 0.004 250)" }}>
+          <div className="text-center space-y-2">
+            <FileText className="h-8 w-8 mx-auto text-muted-foreground opacity-40" />
+            <p className="text-xs text-muted-foreground">Document not yet generated</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isImage = /\.(png|jpg|jpeg|gif|webp)$/i.test(url);
+  const isWord = /\.(docx|doc)$/i.test(url) || (fileName && /\.(docx|doc)$/i.test(fileName));
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Panel header */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5 shrink-0 gap-2"
+        style={{ background: "oklch(0.975 0.004 250)", borderBottom: "1px solid oklch(0.88 0.008 255)" }}
+      >
+        <p className="text-xs font-semibold text-foreground truncate">{label}</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white" style={{ background: badgeColor }}>
+            {badge}
+          </span>
+          <a
+            href={url}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ color: "oklch(0.45 0.18 265)" }}
+            title="Download this document"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </a>
+        </div>
+      </div>
+
+      {/* Document viewer */}
+      <div className="flex-1 overflow-hidden" style={{ background: "oklch(0.94 0.006 255)" }}>
+        {isImage ? (
+          <img src={url} alt={label} className="w-full h-full object-contain p-4" />
+        ) : isWord ? (
+          /* Word docs: show download prompt since browsers can't render .docx inline */
+          <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+            <FileText className="h-12 w-12 text-muted-foreground opacity-50" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">Word Document</p>
+              <p className="text-xs text-muted-foreground">Download to view the {badge.toLowerCase()} version</p>
+            </div>
+            <a
+              href={url}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: badgeColor }}
+            >
+              <Download className="h-4 w-4" />
+              Download {badge} Version
+            </a>
+          </div>
+        ) : (
+          <iframe
+            src={url}
+            className="w-full h-full border-0"
+            title={label}
+            sandbox="allow-same-origin allow-scripts allow-popups"
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ApprovalPage() {
@@ -41,14 +142,14 @@ export default function ApprovalPage() {
   );
   const approveMutation = trpc.drafts.approveByToken.useMutation();
 
-  // Auto-confirm if action is in URL (direct email button click)
+  // Mark as already-done if draft was already actioned
   useEffect(() => {
-    if (!initialAction || !data || confirmed) return;
+    if (!data || confirmed) return;
     if (data.draft.status === "approved" || data.draft.status === "rejected") {
       setConfirmed(true);
       setConfirmedStatus(data.draft.status as "approved" | "rejected");
     }
-  }, [data, initialAction, confirmed]);
+  }, [data, confirmed]);
 
   const handleAction = async (action: "approve" | "reject") => {
     try {
@@ -112,85 +213,106 @@ export default function ApprovalPage() {
     try { return JSON.parse(draft.changeLog ?? "[]"); } catch { return []; }
   })();
 
-  // ── Already actioned ──────────────────────────────────────────────────────────
   const alreadyDone = confirmed || draft.status === "approved" || draft.status === "rejected";
   const finalStatus = confirmedStatus ?? (draft.status as "approved" | "rejected" | null);
 
+  // Determine document URLs
+  const originalDocUrl = (draft as Record<string, unknown>).annotatedOriginalUrl as string | null ?? doc?.fileUrl ?? null;
+  const modifiedDocUrl = (draft as Record<string, unknown>).modifiedFileUrl as string | null ?? null;
+  const cleanDownloadUrl = (draft as Record<string, unknown>).cleanModifiedUrl as string | null ?? modifiedDocUrl;
+
   return (
-    <div className="min-h-screen" style={{ background: "oklch(0.97 0.004 250)" }}>
-      {/* Header */}
+    <div className="min-h-screen flex flex-col" style={{ background: "oklch(0.97 0.004 250)" }}>
+
+      {/* ── Sticky header ── */}
       <div
-        className="sticky top-0 z-10"
-        style={{ background: "oklch(1 0 0 / 0.96)", borderBottom: "1px solid oklch(0.88 0.008 255)", backdropFilter: "blur(12px)" }}
+        className="sticky top-0 z-20 shrink-0"
+        style={{ background: "oklch(1 0 0 / 0.97)", borderBottom: "1px solid oklch(0.88 0.008 255)", backdropFilter: "blur(12px)" }}
       >
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
               style={{ background: "linear-gradient(135deg, oklch(0.30 0.16 265), oklch(0.25 0.14 275))" }}
             >
-              <ClipboardList className="h-4 w-4 text-white" />
+              <FileText className="h-4 w-4 text-white" />
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">ChangeSync</p>
-              <p className="text-xs text-muted-foreground">Document Approval Request</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs gap-1.5"
-            onClick={() => setLocation("/")}
-          >
-            <ArrowRight className="h-3.5 w-3.5" /> Open ChangeSync
-          </Button>
-        </div>
-      </div>
-
-      <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-
-        {/* ── Change summary card ── */}
-        <div
-          className="rounded-2xl p-6 space-y-4"
-          style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.88 0.008 255)", boxShadow: "0 1px 4px oklch(0.18 0.020 255 / 0.06)" }}
-        >
-          <div className="flex items-start gap-4">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "oklch(0.38 0.16 265 / 0.10)", border: "1px solid oklch(0.38 0.16 265 / 0.20)" }}
-            >
-              <FileText className="h-5 w-5" style={{ color: "oklch(0.45 0.18 265)" }} />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Approval Required</p>
-              <h1 className="text-xl font-bold text-foreground">{event?.title ?? "Change Event"}</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Document: <span className="font-semibold text-foreground">{doc?.name ?? `Document #${draft.documentId}`}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground truncate">
+                {event?.title ?? "Change Event"}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                Approval required — {doc?.name ?? `Document #${draft.documentId}`}
               </p>
             </div>
           </div>
-
-          {/* Document metadata */}
-          <div className="flex items-center gap-2 flex-wrap pt-1">
+          <div className="flex items-center gap-2 shrink-0">
             {doc?.code && (
-              <span className="text-xs px-2.5 py-1 rounded-lg font-mono font-medium" style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}>
+              <span className="hidden sm:inline text-xs px-2 py-0.5 rounded font-mono" style={{ background: "oklch(0.94 0.008 255)", color: "oklch(0.40 0.04 255)" }}>
                 {doc.code}
               </span>
             )}
-            {doc?.category && (
-              <span className="text-xs px-2.5 py-1 rounded-lg font-medium" style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}>
-                {doc.category}
-              </span>
-            )}
-            {doc?.owner && (
-              <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium" style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}>
-                <Building2 className="h-3 w-3" /> {doc.owner}
-              </span>
-            )}
+            <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => setLocation("/")}>
+              <ArrowRight className="h-3.5 w-3.5" /> Open ChangeSync
+            </Button>
           </div>
         </div>
+      </div>
 
-        {/* ── Change details table ── */}
+      {/* ── Document split panel ── */}
+      <div
+        className="shrink-0 mx-4 mt-4 rounded-2xl overflow-hidden"
+        style={{
+          height: "calc(100vh - 200px)",
+          minHeight: "480px",
+          border: "1px solid oklch(0.88 0.008 255)",
+          boxShadow: "0 2px 8px oklch(0.18 0.020 255 / 0.08)",
+          background: "oklch(1 0 0)",
+        }}
+      >
+        {/* Split panel header */}
+        <div
+          className="flex items-center gap-3 px-5 py-3 shrink-0"
+          style={{ background: "oklch(0.975 0.004 250)", borderBottom: "1px solid oklch(0.88 0.008 255)" }}
+        >
+          <div className="h-1 w-5 rounded-full" style={{ background: "oklch(0.45 0.18 265)" }} />
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+            Document Comparison
+          </p>
+          <span className="text-xs text-muted-foreground ml-auto">
+            Review both versions before making your decision
+          </span>
+        </div>
+
+        {/* Two-column split */}
+        <div className="flex h-full" style={{ height: "calc(100% - 44px)" }}>
+          {/* LEFT: Original with yellow highlights */}
+          <div className="flex-1 min-w-0 border-r" style={{ borderColor: "oklch(0.88 0.008 255)" }}>
+            <DocPanel
+              url={originalDocUrl}
+              label={doc?.name ?? "Original Document"}
+              badge="ORIGINAL"
+              badgeColor="oklch(0.62 0.16 85)"
+              fileName={doc?.fileName}
+            />
+          </div>
+          {/* RIGHT: Modified with green highlights */}
+          <div className="flex-1 min-w-0">
+            <DocPanel
+              url={modifiedDocUrl}
+              label={doc?.name ?? "Modified Document"}
+              badge="MODIFIED"
+              badgeColor="oklch(0.50 0.16 145)"
+              fileName={doc?.fileName}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Content below split panel ── */}
+      <div className="px-4 pb-10 mt-4 space-y-4">
+
+        {/* Change log table */}
         {changeLog.length > 0 && (
           <div
             className="rounded-2xl overflow-hidden"
@@ -240,26 +362,33 @@ export default function ApprovalPage() {
           </div>
         )}
 
-        {/* ── View document link ── */}
-        {doc?.fileUrl && (
-          <div
-            className="flex items-center justify-between rounded-xl px-5 py-3"
-            style={{ background: "oklch(0.38 0.16 265 / 0.05)", border: "1px solid oklch(0.38 0.16 265 / 0.20)" }}
-          >
-            <p className="text-sm text-foreground font-medium">View the full document comparison</p>
+        {/* Document metadata row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {doc?.category && (
+            <span className="text-xs px-2.5 py-1 rounded-lg font-medium" style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}>
+              {doc.category}
+            </span>
+          )}
+          {doc?.owner && (
+            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium" style={{ background: "oklch(0.94 0.008 255)", border: "1px solid oklch(0.86 0.010 255)", color: "oklch(0.40 0.04 255)" }}>
+              <Building2 className="h-3 w-3" /> {doc.owner}
+            </span>
+          )}
+          {cleanDownloadUrl && (
             <a
-              href={`/drafts/${draft.id}`}
+              href={cleanDownloadUrl}
+              download
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs font-semibold transition-colors"
-              style={{ color: "oklch(0.45 0.18 265)" }}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-opacity hover:opacity-70"
+              style={{ background: "oklch(0.38 0.16 265 / 0.08)", border: "1px solid oklch(0.38 0.16 265 / 0.25)", color: "oklch(0.45 0.18 265)" }}
             >
-              Open in ChangeSync <ArrowRight className="h-3.5 w-3.5" />
+              <Download className="h-3 w-3" /> Download Clean Version
             </a>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* ── Action area ── */}
+        {/* ── Decision area ── */}
         {alreadyDone ? (
           <div
             className="rounded-2xl p-8 text-center space-y-3"
@@ -290,7 +419,7 @@ export default function ApprovalPage() {
             <div>
               <p className="text-sm font-semibold text-foreground mb-1">Your Decision</p>
               <p className="text-xs text-muted-foreground">
-                Review the change details above, then approve or reject this document update.
+                Review the documents above, then approve or reject this update.
               </p>
             </div>
 
@@ -335,7 +464,6 @@ export default function ApprovalPage() {
               </Button>
             </div>
 
-            {/* Auto-confirm if action was in URL */}
             {initialAction && !confirmed && (
               <div
                 className="rounded-xl p-3 flex items-center gap-3"

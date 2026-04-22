@@ -297,3 +297,11 @@
 - [x] Add sanitizeForPdf() helper to strip non-Latin-1 characters from all dynamic text in pdf-lib drawText
 - [x] Fix __dirname in documentModifier.ts (ESM context - use import.meta.url)
 - [x] All 31 tests pass, TypeScript compiles cleanly
+
+## Clean Replacement & Approver View (Apr 22 2026)
+- [x] PDF: replace old value text entirely in modified doc — white cover + new value (both annotated view and clean download)
+- [x] Word: python-docx replaces text in-place, compound-term priority prevents duplicate unit issue
+- [x] Approver review page: show split-panel (old doc left, new doc right) immediately on load, with approve/reject form below — no separate click required
+- [x] Approver page: fetch draft data including annotatedOriginalUrl and modifiedFileUrl, render both iframes side by side
+- [x] Approver page: approve/reject/notes form rendered below the split panel on the same page
+- [x] Make the entire annotation/replacement logic weight-agnostic (driven by skuChanges oldValue/newValue, compound-term priority for all units)

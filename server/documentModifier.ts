@@ -368,11 +368,13 @@ async function annotateOriginalPdf(
 
   const filteredChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "");
   for (const change of filteredChanges) {
-    const searchTerms = [change.oldValue];
+    // Compound terms first to avoid matching bare number and leaving the unit behind
+    const searchTerms: string[] = [];
     if (change.unit) {
-      searchTerms.push(`${change.oldValue}${change.unit}`);
-      searchTerms.push(`${change.oldValue} ${change.unit}`);
+      searchTerms.push(`${change.oldValue}${change.unit}`);   // "155g"
+      searchTerms.push(`${change.oldValue} ${change.unit}`);  // "155 g"
     }
+    searchTerms.push(change.oldValue);  // "155" (fallback)
     const matches = findTermsInPageWords(pageWords, searchTerms);
     for (const m of matches) {
       const page = pdfDoc.getPage(m.pageIdx);
@@ -464,11 +466,13 @@ async function modifyPdf(
     // For each change, find all occurrences of oldValue across all pages
     const filteredChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "" && c.newValue);
     for (const change of filteredChanges) {
-      const searchTerms = [change.oldValue];
+      // Compound terms first to avoid matching bare number and leaving the unit behind
+      const searchTerms: string[] = [];
       if (change.unit) {
-        searchTerms.push(`${change.oldValue}${change.unit}`);
-        searchTerms.push(`${change.oldValue} ${change.unit}`);
+        searchTerms.push(`${change.oldValue}${change.unit}`);   // "155g"
+        searchTerms.push(`${change.oldValue} ${change.unit}`);  // "155 g"
       }
+      searchTerms.push(change.oldValue);  // "155" (fallback)
 
       const matches = findTermsInPageWords(pageWords, searchTerms);
       for (const m of matches) {
@@ -480,19 +484,30 @@ async function modifyPdf(
         const boxH = pdfLibYMax - pdfLibYMin;
         const boxW = m.xMax - m.xMin;
 
-        // Green highlight over the position where new value will appear
-        page.drawRectangle({
-          x: m.xMin - 2,
-          y: pdfLibYMin - 1,
-          width: boxW + 4,
-          height: boxH + 2,
-          color: rgb(0.75, 1.0, 0.75),
-          opacity: 0.65,
-        });
-
         // Draw the new value text in green, replacing the old
         const newLabel = sanitizeForPdf(`${change.newValue}${change.unit ? " " + change.unit : ""}`);
         const annotFontSize = Math.max(6, Math.min(10, boxH * 0.9));
+
+        // ── ANNOTATED VIEW (right panel): white cover + green highlight + new value ──
+        // Step 1: Cover the old text with a white rectangle (fully opaque)
+        page.drawRectangle({
+          x: m.xMin - 2,
+          y: pdfLibYMin - 2,
+          width: boxW + 4,
+          height: boxH + 4,
+          color: rgb(1.0, 1.0, 1.0),
+          opacity: 1.0,
+        });
+        // Step 2: Green highlight over the covered area
+        page.drawRectangle({
+          x: m.xMin - 2,
+          y: pdfLibYMin - 2,
+          width: boxW + 4,
+          height: boxH + 4,
+          color: rgb(0.75, 1.0, 0.75),
+          opacity: 0.7,
+        });
+        // Step 3: Draw the new value text in dark green
         page.drawText(newLabel, {
           x: m.xMin,
           y: pdfLibYMin + (boxH - annotFontSize) / 2,
@@ -500,8 +515,7 @@ async function modifyPdf(
           font: helveticaBold,
           color: rgb(0.05, 0.45, 0.1),
         });
-
-        // "NEW" label above (ASCII-safe — WinAnsi cannot encode Unicode arrows)
+        // Step 4: "NEW" label above
         const labelFontSize = Math.max(5, Math.min(7, boxH * 0.7));
         page.drawText("> NEW", {
           x: m.xMin,
@@ -511,20 +525,21 @@ async function modifyPdf(
           color: rgb(0.05, 0.45, 0.1),
         });
 
-        // ── CLEAN DOWNLOAD (no highlights): just replace the text ──────────
+        // ── CLEAN DOWNLOAD (no highlights): white cover + new value text only ──
         const cleanPage = cleanPdfDoc.getPage(m.pageIdx);
         const { height: cleanPageH } = cleanPage.getSize();
         const cleanPdfLibYMin = cleanPageH - m.yMax;
         const cleanBoxH = (cleanPageH - m.yMin) - cleanPdfLibYMin;
-        // Overwrite old value with white rectangle + new value text
+        // Cover old text with white rectangle
         cleanPage.drawRectangle({
-          x: m.xMin - 1,
-          y: cleanPdfLibYMin - 1,
-          width: boxW + 2,
-          height: cleanBoxH + 2,
+          x: m.xMin - 2,
+          y: cleanPdfLibYMin - 2,
+          width: boxW + 4,
+          height: cleanBoxH + 4,
           color: rgb(1.0, 1.0, 1.0),
           opacity: 1.0,
         });
+        // Draw new value in black (same style as original text)
         cleanPage.drawText(newLabel, {
           x: m.xMin,
           y: cleanPdfLibYMin + (cleanBoxH - annotFontSize) / 2,
