@@ -48,6 +48,12 @@ export interface ModificationResult {
   modifiedFileKey: string;
   changeLog: CellChange[];
   changesApplied: number;
+  /** URL of the original document with YELLOW highlights over old values (for left panel in DraftReview) */
+  annotatedOriginalUrl?: string;
+  annotatedOriginalKey?: string;
+  /** URL of the clean modified document without any annotation highlights (for download) */
+  cleanModifiedUrl?: string;
+  cleanModifiedKey?: string;
 }
 
 /**
@@ -289,136 +295,241 @@ function parseBboxHtml(html: string): Map<number, Array<{ word: string; xMin: nu
 }
 
 /**
- * Modify a PDF: use pdftotext -bbox to find exact word positions, then
- * draw yellow highlight boxes directly over changed values on the page,
- * plus a strikethrough and green "→ new value" annotation next to each match.
- * Also appends a clean change summary page at the end.
+ * Helper: find word bounding boxes for given search terms in a PDF.
+ * Returns an array of match records with page index and coordinates.
  */
-async function modifyPdf(
-  buffer: Buffer,
-  changes: ChangeEntry[],
-  docName: string
-): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
-  const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+type WordEntry = { word: string; xMin: number; yMin: number; xMax: number; yMax: number; pageWidth: number; pageHeight: number };
 
-  const changeLog: CellChange[] = [];
+function findTermsInPageWords(
+  pageWords: Map<number, WordEntry[]>,
+  searchTerms: string[]
+): Array<{ pageIdx: number; wi: number; xMin: number; yMin: number; xMax: number; yMax: number; pageH: number; term: string }> {
+  const matches: Array<{ pageIdx: number; wi: number; xMin: number; yMin: number; xMax: number; yMax: number; pageH: number; term: string }> = [];
+  for (const [pageIdx, words] of Array.from(pageWords.entries())) {
+    for (const term of searchTerms) {
+      const termWords = term.trim().split(/\s+/);
+      for (let wi = 0; wi <= words.length - termWords.length; wi++) {
+        const matchWords = words.slice(wi, wi + termWords.length);
+        const matchText = matchWords.map(w => w.word).join(" ");
+        if (matchText.toLowerCase() === term.toLowerCase() ||
+            matchText.toLowerCase().replace(/[,]/g, "") === term.toLowerCase().replace(/[,]/g, "")) {
+          const xMin = Math.min(...matchWords.map(w => w.xMin));
+          const yMin = Math.min(...matchWords.map(w => w.yMin));
+          const xMax = Math.max(...matchWords.map(w => w.xMax));
+          const yMax = Math.max(...matchWords.map(w => w.yMax));
+          // Get page height from the first word's pageHeight
+          const pageH = matchWords[0]?.pageHeight ?? 842;
+          matches.push({ pageIdx, wi, xMin, yMin, xMax, yMax, pageH, term });
+          break; // one match per term per page
+        }
+      }
+    }
+  }
+  return matches;
+}
 
-  // Write PDF to temp file for pdftotext -bbox
+/**
+ * Extract pdftotext -bbox page words from a PDF buffer.
+ * Returns null on failure.
+ */
+function extractPageWords(buffer: Buffer): Map<number, WordEntry[]> | null {
   const tmpPdf = join(tmpdir(), `pdf-bbox-${randomSuffix()}.pdf`);
   const tmpHtml = join(tmpdir(), `pdf-bbox-${randomSuffix()}.html`);
   try {
     writeFileSync(tmpPdf, buffer);
     execSync(`pdftotext -bbox "${tmpPdf}" "${tmpHtml}"`, { timeout: 30000 });
     const bboxHtml = readFileSync(tmpHtml, "utf8");
-    const pageWords = parseBboxHtml(bboxHtml);
+    return parseBboxHtml(bboxHtml);
+  } catch (e) {
+    console.error("[extractPageWords] Failed:", e);
+    return null;
+  } finally {
+    if (existsSync(tmpPdf)) unlinkSync(tmpPdf);
+    if (existsSync(tmpHtml)) unlinkSync(tmpHtml);
+  }
+}
 
-    // For each change, find all occurrences of oldValue across all pages and annotate
+/**
+ * Annotate the ORIGINAL PDF with YELLOW highlights over old values.
+ * Used for the LEFT panel in DraftReview — shows where the old values were.
+ */
+async function annotateOriginalPdf(
+  buffer: Buffer,
+  changes: ChangeEntry[],
+): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const pageWords = extractPageWords(buffer);
+  if (!pageWords) return buffer;
+
+  const filteredChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "");
+  for (const change of filteredChanges) {
+    const searchTerms = [change.oldValue];
+    if (change.unit) {
+      searchTerms.push(`${change.oldValue}${change.unit}`);
+      searchTerms.push(`${change.oldValue} ${change.unit}`);
+    }
+    const matches = findTermsInPageWords(pageWords, searchTerms);
+    for (const m of matches) {
+      const page = pdfDoc.getPage(m.pageIdx);
+      const { height: pageH } = page.getSize();
+      const pdfLibYMin = pageH - m.yMax;
+      const pdfLibYMax = pageH - m.yMin;
+      const boxH = pdfLibYMax - pdfLibYMin;
+      const boxW = m.xMax - m.xMin;
+
+      // Bold YELLOW highlight rectangle over the old value
+      page.drawRectangle({
+        x: m.xMin - 3,
+        y: pdfLibYMin - 2,
+        width: boxW + 6,
+        height: boxH + 4,
+        color: rgb(1.0, 0.93, 0.0),
+        opacity: 0.65,
+      });
+      // Small label above: "OLD VALUE"
+      const labelFontSize = Math.max(5, Math.min(7, boxH * 0.7));
+      page.drawText("OLD", {
+        x: m.xMin,
+        y: pdfLibYMax + 2,
+        size: labelFontSize,
+        font: helveticaBold,
+        color: rgb(0.7, 0.4, 0.0),
+      });
+    }
+  }
+
+  // Add a small "ORIGINAL — OLD VALUES HIGHLIGHTED" stamp to the first page
+  const firstPage = pdfDoc.getPage(0);
+  const { width, height } = firstPage.getSize();
+  firstPage.drawRectangle({
+    x: width - 240,
+    y: height - 30,
+    width: 235,
+    height: 22,
+    color: rgb(1.0, 0.93, 0.0),
+    opacity: 0.9,
+  });
+  firstPage.drawText("ORIGINAL — OLD VALUES HIGHLIGHTED", {
+    x: width - 232,
+    y: height - 22,
+    size: 8,
+    font: helveticaBold,
+    color: rgb(0.4, 0.2, 0.0),
+  });
+
+  const annotatedBuffer = await pdfDoc.save();
+  return Buffer.from(annotatedBuffer);
+}
+
+/**
+ * Modify a PDF: replace old values with new values and add GREEN highlights + arrows.
+ * This is the RIGHT panel view — shows the updated document with new values highlighted.
+ * Also appends a change summary page at the end.
+ */
+async function modifyPdf(
+  buffer: Buffer,
+  changes: ChangeEntry[],
+  docName: string
+): Promise<{ buffer: Buffer; cleanBuffer: Buffer; changeLog: CellChange[] }> {
+  // Load two copies: one for the annotated view, one for the clean download
+  const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  const cleanPdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const cleanHelveticaBold = await cleanPdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const cleanHelvetica = await cleanPdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const changeLog: CellChange[] = [];
+
+  const pageWords = extractPageWords(buffer);
+  if (pageWords) {
+    // For each change, find all occurrences of oldValue across all pages
     const filteredChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "" && c.newValue);
     for (const change of filteredChanges) {
       const searchTerms = [change.oldValue];
-      // Also try without units
       if (change.unit) {
         searchTerms.push(`${change.oldValue}${change.unit}`);
         searchTerms.push(`${change.oldValue} ${change.unit}`);
       }
 
-      let foundAny = false;
-      for (const [pageIdx, words] of Array.from(pageWords.entries())) {
-        const page = pdfDoc.getPage(pageIdx);
+      const matches = findTermsInPageWords(pageWords, searchTerms);
+      for (const m of matches) {
+        // ── ANNOTATED VIEW (right panel): green highlight + arrow ──────────
+        const page = pdfDoc.getPage(m.pageIdx);
         const { height: pageH } = page.getSize();
+        const pdfLibYMin = pageH - m.yMax;
+        const pdfLibYMax = pageH - m.yMin;
+        const boxH = pdfLibYMax - pdfLibYMin;
+        const boxW = m.xMax - m.xMin;
 
-        for (const term of searchTerms) {
-          // Try to match single word or multi-word sequence
-          const termWords = term.trim().split(/\s+/);
-          for (let wi = 0; wi <= words.length - termWords.length; wi++) {
-            // Check if consecutive words match the term
-              type WordEntry = { word: string; xMin: number; yMin: number; xMax: number; yMax: number; pageWidth: number; pageHeight: number };
-              const matchWords: WordEntry[] = words.slice(wi, wi + termWords.length);
-              const matchText = matchWords.map((w: WordEntry) => w.word).join(" ");
-              if (matchText.toLowerCase() === term.toLowerCase() ||
-                  matchText.toLowerCase().replace(/[,]/g, "") === term.toLowerCase().replace(/[,]/g, "")) {
+        // Green highlight over the position where new value will appear
+        page.drawRectangle({
+          x: m.xMin - 2,
+          y: pdfLibYMin - 1,
+          width: boxW + 4,
+          height: boxH + 2,
+          color: rgb(0.75, 1.0, 0.75),
+          opacity: 0.65,
+        });
 
-              // Found a match — get bounding box spanning all matched words
-              const xMin = Math.min(...matchWords.map((w: WordEntry) => w.xMin));
-              const yMin = Math.min(...matchWords.map((w: WordEntry) => w.yMin));
-              const xMax = Math.max(...matchWords.map((w: WordEntry) => w.xMax));
-              const yMax = Math.max(...matchWords.map((w: WordEntry) => w.yMax));
+        // Draw the new value text in green, replacing the old
+        const newLabel = `${change.newValue}${change.unit ? " " + change.unit : ""}`;
+        const annotFontSize = Math.max(6, Math.min(10, boxH * 0.9));
+        page.drawText(newLabel, {
+          x: m.xMin,
+          y: pdfLibYMin + (boxH - annotFontSize) / 2,
+          size: annotFontSize,
+          font: helveticaBold,
+          color: rgb(0.05, 0.45, 0.1),
+        });
 
-              // pdf-lib uses bottom-left origin; pdftotext uses top-left origin
-              // Convert: pdfY → pdf-lib Y = pageHeight - pdfY
-              const pdfLibYMin = pageH - yMax;
-              const pdfLibYMax = pageH - yMin;
-              const boxH = pdfLibYMax - pdfLibYMin;
-              const boxW = xMax - xMin;
+        // Arrow + "NEW" label above
+        const labelFontSize = Math.max(5, Math.min(7, boxH * 0.7));
+        page.drawText("\u2193 NEW", {
+          x: m.xMin,
+          y: pdfLibYMax + 2,
+          size: labelFontSize,
+          font: helveticaBold,
+          color: rgb(0.05, 0.45, 0.1),
+        });
 
-              // 1. Yellow highlight rectangle
-              page.drawRectangle({
-                x: xMin - 2,
-                y: pdfLibYMin - 1,
-                width: boxW + 4,
-                height: boxH + 2,
-                color: rgb(1.0, 0.95, 0.0),
-                opacity: 0.5,
-              });
+        // ── CLEAN DOWNLOAD (no highlights): just replace the text ──────────
+        const cleanPage = cleanPdfDoc.getPage(m.pageIdx);
+        const { height: cleanPageH } = cleanPage.getSize();
+        const cleanPdfLibYMin = cleanPageH - m.yMax;
+        const cleanBoxH = (cleanPageH - m.yMin) - cleanPdfLibYMin;
+        // Overwrite old value with white rectangle + new value text
+        cleanPage.drawRectangle({
+          x: m.xMin - 1,
+          y: cleanPdfLibYMin - 1,
+          width: boxW + 2,
+          height: cleanBoxH + 2,
+          color: rgb(1.0, 1.0, 1.0),
+          opacity: 1.0,
+        });
+        cleanPage.drawText(newLabel, {
+          x: m.xMin,
+          y: cleanPdfLibYMin + (cleanBoxH - annotFontSize) / 2,
+          size: annotFontSize,
+          font: cleanHelveticaBold,
+          color: rgb(0.1, 0.1, 0.1),
+        });
 
-              // 2. Red strikethrough line through the middle of the old text
-              const midY = pdfLibYMin + boxH / 2;
-              page.drawLine({
-                start: { x: xMin, y: midY },
-                end: { x: xMax, y: midY },
-                thickness: 1.2,
-                color: rgb(0.85, 0.1, 0.1),
-              });
-
-              // 3. Green "→ NEW_VALUE" annotation to the right of the old text
-              const newLabel = `-> ${change.newValue}${change.unit ? " " + change.unit : ""}`;
-              const annotX = xMax + 4;
-              const annotFontSize = Math.max(6, Math.min(9, boxH * 0.85));
-
-              // Draw a small green background pill for the new value
-              const approxTextWidth = newLabel.length * annotFontSize * 0.52;
-              page.drawRectangle({
-                x: annotX - 2,
-                y: pdfLibYMin - 1,
-                width: approxTextWidth + 4,
-                height: boxH + 2,
-                color: rgb(0.85, 1.0, 0.85),
-                opacity: 0.85,
-              });
-              page.drawText(newLabel, {
-                x: annotX,
-                y: pdfLibYMin + (boxH - annotFontSize) / 2,
-                size: annotFontSize,
-                font: helveticaBold,
-                color: rgb(0.05, 0.45, 0.1),
-              });
-
-              changeLog.push({
-                sheetName: `Page ${pageIdx + 1}`,
-                cellRef: `(${Math.round(xMin)}, ${Math.round(yMin)})`,
-                oldValue: `${change.fieldName}: ${change.oldValue}${change.unit ? " " + change.unit : ""}`,
-                newValue: `${change.fieldName}: ${change.newValue}${change.unit ? " " + change.unit : ""}`,
-                rowIndex: pageIdx,
-                colIndex: wi,
-              });
-              foundAny = true;
-              break; // One annotation per term match per page
-            }
-          }
-          if (foundAny) break;
-        }
+        changeLog.push({
+          sheetName: `Page ${m.pageIdx + 1}`,
+          cellRef: `(${Math.round(m.xMin)}, ${Math.round(m.yMin)})`,
+          oldValue: `${change.fieldName}: ${change.oldValue}${change.unit ? " " + change.unit : ""}`,
+          newValue: `${change.fieldName}: ${change.newValue}${change.unit ? " " + change.unit : ""}`,
+          rowIndex: m.pageIdx,
+          colIndex: m.wi,
+        });
       }
     }
-  } catch (e) {
-    console.error("[modifyPdf] bbox annotation failed:", e);
-  } finally {
-    if (existsSync(tmpPdf)) unlinkSync(tmpPdf);
-    if (existsSync(tmpHtml)) unlinkSync(tmpHtml);
   }
 
-  // Add a small "MODIFIED DRAFT" stamp to the first page
+  // ── Add "MODIFIED DRAFT" stamp to the annotated view ──────────────────────
   const firstPage = pdfDoc.getPage(0);
   const { width, height } = firstPage.getSize();
   firstPage.drawRectangle({
@@ -426,18 +537,18 @@ async function modifyPdf(
     y: height - 30,
     width: 155,
     height: 22,
-    color: rgb(1.0, 0.85, 0.0),
+    color: rgb(0.75, 1.0, 0.75),
     opacity: 0.9,
   });
-  firstPage.drawText("MODIFIED DRAFT", {
-    x: width - 150,
+  firstPage.drawText("MODIFIED DRAFT — NEW VALUES", {
+    x: width - 155,
     y: height - 22,
-    size: 9,
+    size: 8,
     font: helveticaBold,
-    color: rgb(0.1, 0.1, 0.1),
+    color: rgb(0.05, 0.35, 0.1),
   });
 
-  // Append a clean change summary page at the end
+  // ── Append change summary page to annotated view ──────────────────────────
   const summaryPage = pdfDoc.addPage([595, 842]);
   const margin = 45;
   let y = summaryPage.getHeight() - margin;
@@ -480,7 +591,7 @@ async function modifyPdf(
     const rowBg = i % 2 === 0 ? rgb(0.96, 0.97, 1.0) : rgb(1, 1, 1);
     summaryPage.drawRectangle({ x: margin, y: y - 4, width: summaryPage.getWidth() - 2 * margin, height: 16, color: rowBg });
 
-    const label = c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "…" : c.fieldName;
+    const label = c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "\u2026" : c.fieldName;
     const oldVal = `${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`.substring(0, 22);
     const newVal = `${c.newValue}${c.unit ? " " + c.unit : ""}`.substring(0, 22);
 
@@ -492,8 +603,27 @@ async function modifyPdf(
     if (y < margin + 40) break;
   }
 
+  // ── Also add clean change summary to the clean version ────────────────────
+  const cleanSummaryPage = cleanPdfDoc.addPage([595, 842]);
+  const cleanHelvetica2 = await cleanPdfDoc.embedFont(StandardFonts.Helvetica);
+  const cleanHelveticaBold2 = await cleanPdfDoc.embedFont(StandardFonts.HelveticaBold);
+  let cy = cleanSummaryPage.getHeight() - margin;
+  cleanSummaryPage.drawText("CHANGE SUMMARY", { x: margin, y: cy, size: 16, font: cleanHelveticaBold2, color: rgb(0.1, 0.17, 0.35) });
+  cy -= 20;
+  cleanSummaryPage.drawText(`Document: ${docName}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.4, 0.4, 0.4) });
+  cy -= 26;
+  for (let i = 0; i < allChanges.length && cy > margin + 40; i++) {
+    const c = allChanges[i];
+    const label = c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "\u2026" : c.fieldName;
+    const oldVal = `${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`;
+    const newVal = `${c.newValue}${c.unit ? " " + c.unit : ""}`;
+    cleanSummaryPage.drawText(`${label}: ${oldVal} \u2192 ${newVal}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.15, 0.15, 0.15) });
+    cy -= 16;
+  }
+
   const modifiedBuffer = await pdfDoc.save();
-  return { buffer: Buffer.from(modifiedBuffer), changeLog };
+  const cleanBuffer = await cleanPdfDoc.save();
+  return { buffer: Buffer.from(modifiedBuffer), cleanBuffer: Buffer.from(cleanBuffer), changeLog };
 }
 
 /**
@@ -829,6 +959,10 @@ export async function modifyDocument(params: {
     fileName.endsWith(".docx") ||
     fileName.endsWith(".doc");
 
+  // Extra buffers for PDF-specific annotated original and clean download
+  let annotatedOriginalBuffer: Buffer | null = null;
+  let cleanModifiedBuffer: Buffer | null = null;
+
   if (isExcel) {
     const result = await modifyExcel(originalBuffer, changes);
     modifiedBuffer = result.buffer;
@@ -836,9 +970,18 @@ export async function modifyDocument(params: {
     outputMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     outputExtension = "xlsx";
   } else if (isPdf) {
-    const result = await modifyPdf(originalBuffer, changes, documentName);
-    modifiedBuffer = result.buffer;
-    changeLog = result.changeLog;
+    // Produce three variants:
+    // 1. annotatedOriginalBuffer — original PDF with YELLOW highlights on old values (left panel)
+    // 2. modifiedBuffer — modified PDF with GREEN highlights on new values (right panel view)
+    // 3. cleanModifiedBuffer — clean modified PDF without any annotation colors (download)
+    const [annotated, modified] = await Promise.all([
+      annotateOriginalPdf(originalBuffer, changes),
+      modifyPdf(originalBuffer, changes, documentName),
+    ]);
+    annotatedOriginalBuffer = annotated;
+    modifiedBuffer = modified.buffer;
+    cleanModifiedBuffer = modified.cleanBuffer;
+    changeLog = modified.changeLog;
     outputMimeType = "application/pdf";
     outputExtension = "pdf";
   } else if (isWord) {
@@ -863,9 +1006,32 @@ export async function modifyDocument(params: {
   }
 
   const baseName = fileName.replace(/\.[^.]+$/, "");
-  const modifiedFileName = `${baseName}-modified-${randomSuffix()}.${outputExtension}`;
+  const suffix = randomSuffix();
+
+  // Upload the annotated view (right panel — green highlights)
+  const modifiedFileName = `${baseName}-modified-${suffix}.${outputExtension}`;
   const modifiedFileKey = `modified-documents/${modifiedFileName}`;
   const { url: modifiedFileUrl } = await storagePut(modifiedFileKey, modifiedBuffer, outputMimeType);
+
+  // Upload annotated original (left panel — yellow highlights) if available
+  let annotatedOriginalUrl: string | undefined;
+  let annotatedOriginalKey: string | undefined;
+  if (annotatedOriginalBuffer) {
+    const annotOrigFileName = `${baseName}-annotated-original-${suffix}.${outputExtension}`;
+    annotatedOriginalKey = `modified-documents/${annotOrigFileName}`;
+    const { url } = await storagePut(annotatedOriginalKey, annotatedOriginalBuffer, outputMimeType);
+    annotatedOriginalUrl = url;
+  }
+
+  // Upload clean modified (download — no highlights) if available
+  let cleanModifiedUrl: string | undefined;
+  let cleanModifiedKey: string | undefined;
+  if (cleanModifiedBuffer) {
+    const cleanFileName = `${baseName}-clean-modified-${suffix}.${outputExtension}`;
+    cleanModifiedKey = `modified-documents/${cleanFileName}`;
+    const { url } = await storagePut(cleanModifiedKey, cleanModifiedBuffer, outputMimeType);
+    cleanModifiedUrl = url;
+  }
 
   console.log(`[DocumentModifier] Modified ${documentName}: ${changeLog.length} cell changes applied, uploaded to ${modifiedFileUrl}`);
 
@@ -874,5 +1040,9 @@ export async function modifyDocument(params: {
     modifiedFileKey,
     changeLog,
     changesApplied: changeLog.length,
+    annotatedOriginalUrl,
+    annotatedOriginalKey,
+    cleanModifiedUrl,
+    cleanModifiedKey,
   };
 }

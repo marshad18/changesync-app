@@ -80,6 +80,10 @@ vi.mock("./documentModifier", () => ({
       { sheetName: "Sheet1", cellRef: "B5", oldValue: "1.5 kW", newValue: "2.2 kW", rowIndex: 4, colIndex: 1 },
     ],
     changesApplied: 1,
+    annotatedOriginalUrl: "https://s3.example.com/modified/lube-annotated-original.pdf",
+    annotatedOriginalKey: "modified-documents/lube-annotated-original.pdf",
+    cleanModifiedUrl: "https://s3.example.com/modified/lube-clean-modified.pdf",
+    cleanModifiedKey: "modified-documents/lube-clean-modified.pdf",
   }),
 }));
 

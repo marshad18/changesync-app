@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { execSync } from "child_process";
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
@@ -187,32 +191,202 @@ export const appRouter = router({
       const changeTypeLabel = CHANGE_TYPE_LABELS[event.changeType] || event.changeType;
       const skuSummary = skus.length > 0 ? skus.map(s => `${s.fieldName}: ${s.oldValue ?? "N/A"} → ${s.newValue ?? "N/A"}${s.unit ? " "+s.unit : ""}`).join("; ") : "None";
       const assetSummary = assets.length > 0 ? assets.map(a => `${a.assetType}: ${a.fileName}`).join(", ") : "None";
-      const docList = allDocs.map(d => `ID ${d.id}: ${d.code ? "["+d.code+"] " : ""}${d.name} (Category: ${d.category ?? "Unknown"}, Owner: ${d.owner ?? "Unknown"})`).join("\n");
+
+      // ── STEP 1: Extract old values to search for (from SKU changes) ──────────
+      // Build a list of search terms from the old values in the change event.
+      // For weight/price changes, the old value (e.g. "155g", "155gm") is the key.
+      const searchTerms: string[] = [];
+      for (const sku of skus) {
+        if (sku.oldValue && sku.oldValue.trim()) {
+          const base = sku.oldValue.trim();
+          searchTerms.push(base);
+          // Also try with unit appended (e.g. "155" + "g" = "155g")
+          if (sku.unit && sku.unit.trim()) {
+            searchTerms.push(`${base}${sku.unit.trim()}`);
+            searchTerms.push(`${base} ${sku.unit.trim()}`);
+            // Try with 'm' suffix for grams (155g → 155gm)
+            if (sku.unit.trim().toLowerCase() === "g") {
+              searchTerms.push(`${base}gm`);
+              searchTerms.push(`${base} gm`);
+            }
+          }
+          // Try without trailing unit if value already contains it
+          const numericOnly = base.replace(/[^0-9.]/g, "");
+          if (numericOnly && numericOnly !== base) searchTerms.push(numericOnly);
+        }
+      }
+      // Also add text notes keywords for part changes
+      if (event.changeType === "part_change" && event.textNotes) {
+        const noteWords = event.textNotes.split(/\s+/).filter(w => w.length > 4);
+        searchTerms.push(...noteWords.slice(0, 5));
+      }
+      const uniqueSearchTerms = Array.from(new Set(searchTerms.map(t => t.toLowerCase())));
+      console.log(`[ImpactAnalysis] Searching for terms in ${allDocs.length} documents:`, uniqueSearchTerms);
+
+      // ── STEP 2: Scan each document's text content for the old value ──────────
+      // Any document that contains the exact old value is auto-marked as impacted.
+      // This is deterministic — no LLM guessing needed for these.
+      interface DocTextResult {
+        docId: number;
+        text: string;
+        containsOldValue: boolean;
+        matchedTerms: string[];
+      }
+      const docTextResults: DocTextResult[] = await Promise.all(
+        allDocs.map(async (doc) => {
+          if (!doc.fileUrl || !doc.fileName) return { docId: doc.id, text: "", containsOldValue: false, matchedTerms: [] };
+          let text = "";
+          try {
+            const res = await fetch(doc.fileUrl);
+            if (!res.ok) return { docId: doc.id, text: "", containsOldValue: false, matchedTerms: [] };
+            const arrayBuf = await res.arrayBuffer();
+            const buf = Buffer.from(arrayBuf);
+            const isPdf = doc.mimeType === "application/pdf" || doc.fileName.endsWith(".pdf");
+            if (isPdf) {
+              const tmpPdf = join(tmpdir(), `impact-scan-${doc.id}-${Date.now()}.pdf`);
+              try {
+                writeFileSync(tmpPdf, buf);
+                text = execSync(`pdftotext -layout "${tmpPdf}" -`, { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }).toString();
+              } finally {
+                if (existsSync(tmpPdf)) unlinkSync(tmpPdf);
+              }
+            } else {
+              // For Excel/Word, use extractDocumentContent
+              text = await extractDocumentContent({ fileUrl: doc.fileUrl, fileName: doc.fileName, mimeType: doc.mimeType ?? "application/octet-stream" });
+            }
+          } catch (e) {
+            console.warn(`[ImpactAnalysis] Could not extract text from ${doc.name}:`, e);
+          }
+          const lowerText = text.toLowerCase();
+          const matchedTerms = uniqueSearchTerms.filter(term => lowerText.includes(term));
+          return { docId: doc.id, text: text.substring(0, 3000), containsOldValue: matchedTerms.length > 0, matchedTerms };
+        })
+      );
+
+      // ── STEP 3: Auto-mark docs containing old value; pass the rest to LLM ───
+      const autoImpacted = docTextResults.filter(r => r.containsOldValue);
+      const needsLLM = docTextResults.filter(r => !r.containsOldValue);
+      console.log(`[ImpactAnalysis] Auto-impacted (text match): ${autoImpacted.length} docs, sending ${needsLLM.length} to LLM`);
+
       // Build change-type-specific context
       let changeContext = "";
       if (event.changeType === "part_change") {
         changeContext = `This is a Part Change. The sub-type is: ${event.partSubType ?? "unspecified"} (manual or drawing replacement). Old and new ${event.partSubType ?? "documents"} have been uploaded.`;
       } else if (event.changeType === "weight_change") {
-        changeContext = `This is a Weight Change. The product weight has changed. Check skuChanges for old/new weight and SKU code values.`;
+        changeContext = `This is a Weight Change. The product weight has changed from ${skus.map(s => s.oldValue).join("/")} to ${skus.map(s => s.newValue).join("/")}. Any document referencing the old weight value must be updated.`;
       } else if (event.changeType === "price_change") {
-        changeContext = `This is a Price Change. The product price has changed. Check skuChanges for old/new price and SKU code values.`;
+        changeContext = `This is a Price Change. The product price has changed. Any document referencing the old price must be updated.`;
       }
-      const prompt = `You are an expert manufacturing engineer analyzing the impact of an engineering change on plant documentation.\n\nCHANGE EVENT:\n- Title: ${event.title}\n- Change Type: ${changeTypeLabel}\n- Change Context: ${changeContext}\n- Change Scope: ${event.changeScope ?? "substitution"}\n- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}\n- Affected SKU: ${event.affectedSku ?? "Not specified"}\n- Text Notes: ${event.textNotes ?? "None"}\n- Parameter Changes: ${skuSummary}\n- Uploaded Assets: ${assetSummary}\n\nDOCUMENTS IN LIBRARY:\n${docList}\n\nTASK:\nFor each document listed above, determine whether it would be impacted by this engineering change. Return a JSON array where each element has:\n- documentId: number\n- impacted: boolean\n- confidence: "high" | "medium" | "low"\n- reasoning: string (1-2 sentences explaining why this document is or is not impacted)\n- impactedSections: string (specific sections/fields to update if impacted, else empty string)\n\nBe thorough and err on the side of inclusion. For weight changes, focus on packaging specs, product data sheets, and labelling docs. For price changes, focus on pricing lists, SKU masters, and commercial docs. For part changes, focus on equipment manuals, maintenance plans, and safety docs.`;
-      const response = await invokeLLM({
-        messages: [
-          { role: "system", content: "You are an expert manufacturing engineer. Always respond with valid JSON only." },
-          { role: "user", content: prompt },
-        ],
-        response_format: { type: "json_schema", json_schema: { name: "impact_analysis", strict: true, schema: { type: "object", properties: { analyses: { type: "array", items: { type: "object", properties: { documentId: { type: "integer" }, impacted: { type: "boolean" }, confidence: { type: "string", enum: ["high","medium","low"] }, reasoning: { type: "string" }, impactedSections: { type: "string" } }, required: ["documentId","impacted","confidence","reasoning","impactedSections"], additionalProperties: false } } }, required: ["analyses"], additionalProperties: false } } },
-      });
-      const content = String(response.choices[0]?.message?.content ?? "");
-      if (!content) throw new Error("No response from AI");
-      const parsed = JSON.parse(content) as { analyses: Array<{ documentId: number; impacted: boolean; confidence: "high"|"medium"|"low"; reasoning: string; impactedSections: string }> };
+
+      // ── STEP 4: LLM analysis for remaining documents (with text snippets) ───
+      let llmAnalyses: Array<{ documentId: number; impacted: boolean; confidence: "high"|"medium"|"low"; reasoning: string; impactedSections: string }> = [];
+      if (needsLLM.length > 0) {
+        const docListWithText = needsLLM.map(r => {
+          const doc = allDocs.find(d => d.id === r.docId)!;
+          const textSnippet = r.text ? `\n   TEXT EXCERPT: "${r.text.substring(0, 400).replace(/\n/g, " ")}"` : "";
+          return `ID ${doc.id}: ${doc.code ? "["+doc.code+"] " : ""}${doc.name} (Category: ${doc.category ?? "Unknown"}, Owner: ${doc.owner ?? "Unknown"})${textSnippet}`;
+        }).join("\n\n");
+
+        const prompt = `You are a senior manufacturing engineer performing a rigorous document impact assessment for an engineering change.
+
+CHANGE EVENT:
+- Title: ${event.title}
+- Change Type: ${changeTypeLabel}
+- Context: ${changeContext}
+- Change Scope: ${event.changeScope ?? "substitution"}
+- Affected Equipment: ${event.affectedEquipment ?? "Not specified"}
+- Affected SKU: ${event.affectedSku ?? "Not specified"}
+- Text Notes: ${event.textNotes ?? "None"}
+- Parameter Changes: ${skuSummary}
+- Uploaded Assets: ${assetSummary}
+
+DOCUMENTS TO ASSESS (with text excerpts):
+${docListWithText}
+
+INSTRUCTIONS:
+For each document above, determine if it is impacted by this engineering change. A document is impacted if:
+1. It contains values that reference the changed parameter (weight, price, part number, etc.)
+2. It contains procedures or specifications that would be affected by this change
+3. It is a regulatory, safety, or compliance document that must reflect the new state
+
+Be thorough — err on the side of inclusion. If in doubt, mark as impacted with medium confidence.
+
+Return JSON with an "analyses" array where each element has:
+- documentId: number (exact ID from the list above)
+- impacted: boolean
+- confidence: "high" | "medium" | "low"
+- reasoning: string (1-2 sentences — be specific about WHY this document is or is not impacted)
+- impactedSections: string (specific sections/fields to update if impacted, else empty string)`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a senior manufacturing engineer. Always respond with valid JSON only. Never hallucinate document IDs — only use the IDs provided." },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_schema", json_schema: { name: "impact_analysis", strict: true, schema: { type: "object", properties: { analyses: { type: "array", items: { type: "object", properties: { documentId: { type: "integer" }, impacted: { type: "boolean" }, confidence: { type: "string", enum: ["high","medium","low"] }, reasoning: { type: "string" }, impactedSections: { type: "string" } }, required: ["documentId","impacted","confidence","reasoning","impactedSections"], additionalProperties: false } } }, required: ["analyses"], additionalProperties: false } } },
+        });
+        const content = String(response.choices[0]?.message?.content ?? "");
+        if (content) {
+          try {
+            const parsed = JSON.parse(content) as { analyses: typeof llmAnalyses };
+            llmAnalyses = parsed.analyses ?? [];
+          } catch (e) {
+            console.warn("[ImpactAnalysis] Failed to parse LLM response:", e);
+          }
+        }
+      }
+
+      // ── STEP 5: Save all analyses to DB ──────────────────────────────────────
       let count = 0;
-      for (const analysis of parsed.analyses) {
-        await createImpactAnalysis({ changeEventId: input.changeEventId, documentId: analysis.documentId, impacted: analysis.impacted, confidence: analysis.confidence, reasoning: analysis.reasoning, impactedSections: analysis.impactedSections, status: "pending" });
+      // Auto-impacted (text match)
+      for (const r of autoImpacted) {
+        const matchedStr = r.matchedTerms.join(", ");
+        await createImpactAnalysis({
+          changeEventId: input.changeEventId,
+          documentId: r.docId,
+          impacted: true,
+          confidence: "high",
+          reasoning: `Document text contains the exact old value ("${matchedStr}") — automatically flagged as impacted.`,
+          impactedSections: `All sections referencing ${matchedStr}`,
+          status: "pending",
+        });
         count++;
       }
+      // LLM-assessed
+      for (const analysis of llmAnalyses) {
+        // Validate documentId is in our list
+        if (!allDocs.find(d => d.id === analysis.documentId)) continue;
+        await createImpactAnalysis({
+          changeEventId: input.changeEventId,
+          documentId: analysis.documentId,
+          impacted: analysis.impacted,
+          confidence: analysis.confidence,
+          reasoning: analysis.reasoning,
+          impactedSections: analysis.impactedSections,
+          status: "pending",
+        });
+        count++;
+      }
+      // For any docs that weren't covered by either path, add a non-impacted entry
+      const coveredIds = new Set([
+        ...autoImpacted.map(r => r.docId),
+        ...llmAnalyses.map(a => a.documentId),
+      ]);
+      for (const doc of allDocs) {
+        if (!coveredIds.has(doc.id)) {
+          await createImpactAnalysis({
+            changeEventId: input.changeEventId,
+            documentId: doc.id,
+            impacted: false,
+            confidence: "low",
+            reasoning: "Document was not assessed by LLM (possibly due to large library size). Marked as not impacted by default — review manually if needed.",
+            impactedSections: "",
+            status: "pending",
+          });
+          count++;
+        }
+      }
+
       await updateChangeEventStatus(input.changeEventId, "analysis_complete");
       return { analysesCreated: count };
     }),
@@ -399,6 +573,10 @@ Only return changes where you found the exact old value in the document content.
                   modResult.modifiedFileUrl,
                   modResult.modifiedFileKey,
                   JSON.stringify(modResult.changeLog),
+                  modResult.annotatedOriginalUrl,
+                  modResult.annotatedOriginalKey,
+                  modResult.cleanModifiedUrl,
+                  modResult.cleanModifiedKey,
                 );
               } // end else (changesToApply.length > 0)
             }
@@ -698,7 +876,16 @@ Only return changes where you found the exact old value in the document content.
           originalFileKey: doc.fileKey ?? "",
           changes: changesToApply,
         });
-        await updateDraftModifiedFile(input.draftId, modResult.modifiedFileUrl, modResult.modifiedFileKey, JSON.stringify(modResult.changeLog));
+        await updateDraftModifiedFile(
+          input.draftId,
+          modResult.modifiedFileUrl,
+          modResult.modifiedFileKey,
+          JSON.stringify(modResult.changeLog),
+          modResult.annotatedOriginalUrl,
+          modResult.annotatedOriginalKey,
+          modResult.cleanModifiedUrl,
+          modResult.cleanModifiedKey,
+        );
         return { success: true, changesApplied: modResult.changesApplied, message: `Modified file generated with ${modResult.changesApplied} change(s) applied.` };
       }),
   }),

@@ -203,6 +203,12 @@ export const documentDrafts = mysqlTable("documentDrafts", {
   /** S3 URL of the AI-modified version of the original document (Excel/PDF with changes applied) */
   modifiedFileUrl: text("modifiedFileUrl"),
   modifiedFileKey: varchar("modifiedFileKey", { length: 512 }),
+  /** S3 URL of the original document with yellow highlights over old values (for left panel in DraftReview) */
+  annotatedOriginalUrl: text("annotatedOriginalUrl"),
+  annotatedOriginalKey: varchar("annotatedOriginalKey", { length: 512 }),
+  /** S3 URL of the clean modified document without annotation highlights (for download) */
+  cleanModifiedUrl: text("cleanModifiedUrl"),
+  cleanModifiedKey: varchar("cleanModifiedKey", { length: 512 }),
   /** JSON array of change descriptors: [{cellRef, oldValue, newValue, sheetName}] */
   changeLog: text("changeLog"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

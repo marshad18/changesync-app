@@ -322,10 +322,25 @@ export async function updateDraftContent(id: number, draftContent: string) {
   if (!db) throw new Error("Database not available");
   await db.update(documentDrafts).set({ draftContent }).where(eq(documentDrafts.id, id));
 }
-export async function updateDraftModifiedFile(id: number, modifiedFileUrl: string, modifiedFileKey: string, changeLog: string) {
+export async function updateDraftModifiedFile(
+  id: number,
+  modifiedFileUrl: string,
+  modifiedFileKey: string,
+  changeLog: string,
+  annotatedOriginalUrl?: string,
+  annotatedOriginalKey?: string,
+  cleanModifiedUrl?: string,
+  cleanModifiedKey?: string,
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(documentDrafts).set({ modifiedFileUrl, modifiedFileKey, changeLog }).where(eq(documentDrafts.id, id));
+  await db.update(documentDrafts).set({
+    modifiedFileUrl,
+    modifiedFileKey,
+    changeLog,
+    ...(annotatedOriginalUrl ? { annotatedOriginalUrl, annotatedOriginalKey } : {}),
+    ...(cleanModifiedUrl ? { cleanModifiedUrl, cleanModifiedKey } : {}),
+  }).where(eq(documentDrafts.id, id));
 }
 
 export async function getDraftByImpactAnalysisId(impactAnalysisId: number) {

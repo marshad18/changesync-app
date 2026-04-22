@@ -269,3 +269,14 @@
 - [x] DraftReview action panel: shows Route for Approval form only; once routed shows status card only
 - [x] Only the token-based /approve page (linked in the email) allows approval — token is tied to the specific approver email
 - [x] Added clear info message: "Approval is locked to the designated approver"
+
+## Document Annotation Fix (Apr 22 2026)
+- [x] Fix analyzeImpact: scan document text with pdftotext/xlsx before LLM call — auto-mark docs containing old value as impacted (prevents PSG Line Clearance SOP and similar docs from being missed)
+- [x] DB: add annotatedOriginalUrl, annotatedOriginalKey, cleanModifiedUrl, cleanModifiedKey columns to documentDrafts table, run db:push
+- [x] modifyDocument: produce THREE PDF variants — annotated original (yellow highlights on old values), modified view (green highlights + arrow on new values), clean download (no highlights)
+- [x] DraftReview left panel: use annotatedOriginalUrl (yellow highlights on old value) if available, else fall back to doc.fileUrl
+- [x] DraftReview right panel: use modifiedFileUrl (green highlights + arrow on new value)
+- [x] DraftReview download button: use cleanModifiedUrl (no highlights) for download — viewer shows highlights, download is clean
+- [x] Update left panel header badge: "Old values highlighted" label when annotatedOriginalUrl is present
+- [x] Update right panel legend: "Green = new values" + "Download = clean (no highlights)"
+- [x] Update vitest tests: modifyDocument mock includes new annotatedOriginalUrl/cleanModifiedUrl fields

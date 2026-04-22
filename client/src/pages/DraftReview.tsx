@@ -48,7 +48,7 @@ function ChangeAnnotationPanel({ changeLog }: { changeLog: CellChange[] }) {
           className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full"
           style={{ background: "oklch(0.88 0.14 85 / 0.60)", color: "oklch(0.45 0.14 75)" }}
         >
-          Highlighted in yellow above
+          Changes applied
         </span>
       </div>
       {/* Change cards */}
@@ -453,6 +453,12 @@ export default function DraftReview() {
 
   const hasModifiedFile = !!(draft as { modifiedFileUrl?: string | null }).modifiedFileUrl;
   const modifiedFileUrl = (draft as { modifiedFileUrl?: string | null }).modifiedFileUrl ?? null;
+  // annotatedOriginalUrl: original PDF with YELLOW highlights over old values (left panel)
+  // cleanModifiedUrl: modified PDF without any annotation colors (download)
+  const annotatedOriginalUrl = (draft as { annotatedOriginalUrl?: string | null }).annotatedOriginalUrl ?? null;
+  const cleanModifiedUrl = (draft as { cleanModifiedUrl?: string | null }).cleanModifiedUrl ?? null;
+  // For the download button: prefer clean version (no highlights), fall back to annotated modified
+  const downloadUrl = cleanModifiedUrl ?? modifiedFileUrl;
   const status = draft.status ?? "pending_review";
   // Only show the Route for Approval form when the draft is in a state where it hasn't been sent yet.
   // Once routed, approved, or rejected — the form is hidden and only the status card is shown.
@@ -474,8 +480,11 @@ export default function DraftReview() {
     rejected: "Rejected",
   };
 
-  // Left panel always shows the Document Library original file
+  // Left panel: prefer annotated original (yellow highlights on old values) if available,
+  // otherwise fall back to the plain Document Library file
+  const leftPanelFileUrl = annotatedOriginalUrl ?? doc?.fileUrl ?? null;
   const leftPanelLabel = doc?.fileName ?? doc?.name ?? "Original Document";
+  const leftPanelHasAnnotation = !!annotatedOriginalUrl;
 
   return (
     <div className="min-h-full bg-background">
@@ -586,14 +595,15 @@ export default function DraftReview() {
               <ExternalLink className="h-3.5 w-3.5" /> Open Original
             </a>
           )}
-          {modifiedFileUrl && (
+          {downloadUrl && (
             <a
-              href={modifiedFileUrl}
+              href={downloadUrl}
               target="_blank"
               rel="noopener noreferrer"
               download
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
               style={{ background: "oklch(0.45 0.12 145 / 0.10)", border: "1px solid oklch(0.45 0.12 145 / 0.30)", color: "oklch(0.40 0.14 145)" }}
+              title={cleanModifiedUrl ? "Download clean modified document (no highlights)" : "Download modified document"}
             >
               <Download className="h-3.5 w-3.5" /> Download Modified
             </a>
@@ -614,26 +624,42 @@ export default function DraftReview() {
               }}
             >
               {/* Panel header */}
-              <div
-                className="flex items-center justify-between px-5 py-3 shrink-0"
-                style={{ borderBottom: "1px solid oklch(0.88 0.008 255)", background: "oklch(0.975 0.004 250)" }}
+              <div className="flex items-center justify-between px-5 py-3 shrink-0"
+                style={{ borderBottom: "1px solid oklch(0.88 0.008 255)", background: leftPanelHasAnnotation ? "oklch(0.98 0.025 85)" : "oklch(0.975 0.004 250)" }}
               >
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5" />
-                  Original Document
+                  {leftPanelHasAnnotation ? "Original — Old Values" : "Original Document"}
                 </span>
-                <span
-                  className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[200px]"
-                  style={{ background: "oklch(0.92 0.006 255)", color: "oklch(0.50 0.04 255)" }}
-                  title={leftPanelLabel}
-                >
-                  {leftPanelLabel}
-                </span>
+                <div className="flex items-center gap-2">
+                  {leftPanelHasAnnotation && (
+                    <span
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                      style={{ background: "oklch(0.92 0.14 85)", color: "oklch(0.45 0.16 75)", border: "1px solid oklch(0.80 0.14 85 / 0.50)" }}
+                    >
+                      Old values highlighted
+                    </span>
+                  )}
+                  <span
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[200px]"
+                    style={{ background: "oklch(0.92 0.006 255)", color: "oklch(0.50 0.04 255)" }}
+                    title={leftPanelLabel}
+                  >
+                    {leftPanelLabel}
+                  </span>
+                </div>
               </div>
-
               {/* Panel body — inline document viewer */}
               <div className="flex-1 overflow-auto">
-                <LeftPanelContent doc={doc ?? null} />
+                {leftPanelFileUrl ? (
+                  <OriginalDocViewer
+                    fileUrl={leftPanelFileUrl}
+                    fileName={doc?.fileName ?? doc?.name}
+                    mimeType={doc?.mimeType}
+                  />
+                ) : (
+                  <LeftPanelContent doc={doc ?? null} />
+                )}
               </div>
             </div>
 
@@ -664,7 +690,7 @@ export default function DraftReview() {
                   </span>
                   {hasModifiedFile && (
                     <span className="text-[10px] text-muted-foreground" style={{ paddingLeft: "18px" }}>
-                      Same document as left — only changed values are updated &amp; highlighted in yellow
+                      New values highlighted in green — download is clean (no highlights)
                     </span>
                   )}
                 </div>
@@ -734,13 +760,19 @@ export default function DraftReview() {
                 {hasModifiedFile ? (
                   <>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.92 0.14 85)" }} />
-                      <span style={{ color: "oklch(0.45 0.10 75)" }}>Yellow cells = changed values</span>
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.88 0.14 145)" }} />
+                      <span style={{ color: "oklch(0.38 0.14 145)" }}>Green = new values</span>
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "oklch(0.94 0.008 255)" }} />
-                      <span style={{ color: "oklch(0.55 0.04 255)" }}>White cells = unchanged</span>
+                      <span style={{ color: "oklch(0.55 0.04 255)" }}>White = unchanged</span>
                     </span>
+                    {cleanModifiedUrl && (
+                      <span className="flex items-center gap-1.5 ml-auto">
+                        <Download className="h-3 w-3" style={{ color: "oklch(0.45 0.12 145)" }} />
+                        <span style={{ color: "oklch(0.45 0.12 145)" }}>Download = clean (no highlights)</span>
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>
