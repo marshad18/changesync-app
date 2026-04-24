@@ -236,7 +236,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Avatar className="h-8 w-8 shrink-0 border border-border">
                   <AvatarFallback
                     className="text-xs font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg, oklch(0.42 0.18 265), oklch(0.36 0.16 275))" }}
+                    style={{ background: "linear-gradient(135deg, oklch(0.35 0.12 145), oklch(0.28 0.10 155))" }}
                   >
                     {user?.name?.charAt(0).toUpperCase() ?? "U"}
                   </AvatarFallback>
