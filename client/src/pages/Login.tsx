@@ -219,20 +219,7 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-[11px] text-muted-foreground uppercase tracking-wider">or</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
 
-          {/* Register link */}
-          <p className="text-center text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <Link href="/register" className="font-semibold transition-colors" style={{ color: "oklch(0.42 0.18 265)" }}>
-              Create account
-            </Link>
-          </p>
         </div>
       </div>
     </div>

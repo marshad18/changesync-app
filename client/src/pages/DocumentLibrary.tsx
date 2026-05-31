@@ -7,8 +7,95 @@ import { toast } from "sonner";
 import {
   Upload, FileText, Loader2, X, Plus, Eye,
   BookOpen, Search, Github, CheckSquare, Square,
-  FolderOpen, Check, AlertCircle, Download,
+  FolderOpen, Check, AlertCircle, Download, History, ExternalLink,
 } from "lucide-react";
+
+// ─── Version History Drawer ───────────────────────────────────────────────────
+function VersionHistoryDrawer({ documentId, documentName, onClose }: { documentId: number; documentName: string; onClose: () => void }) {
+  const { data: versions, isLoading } = trpc.documents.getVersionHistory.useQuery({ documentId });
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      {/* Drawer */}
+      <div className="relative z-10 w-full max-w-md bg-background border-l border-border shadow-2xl flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <History className="h-5 w-5 text-primary" />
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Version History</h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[220px]">{documentName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Loading versions…</span>
+            </div>
+          ) : !versions || versions.length === 0 ? (
+            <div className="text-center py-12">
+              <History className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">No version history yet.</p>
+              <p className="text-xs text-muted-foreground mt-1">Versions are created when documents are uploaded or approved drafts are applied.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {versions.map((v, idx) => (
+                <div key={v.id} className={`relative pl-8 pb-6 ${idx < versions.length - 1 ? 'border-l-2 border-border ml-3' : 'ml-3'}`}>
+                  {/* Timeline dot */}
+                  <div className={`absolute left-0 top-1 w-3 h-3 rounded-full border-2 -translate-x-[7px] ${
+                    idx === 0 ? 'bg-primary border-primary' : 'bg-background border-border'
+                  }`} />
+
+                  <div className="bg-card border border-border rounded-lg p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                        idx === 0 ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                      }`}>
+                        v{v.versionNumber} {idx === 0 ? '(current)' : ''}
+                      </span>
+                      <a
+                        href={v.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View
+                      </a>
+                    </div>
+
+                    {v.changeEventTitle && (
+                      <p className="text-xs text-foreground font-medium">{v.changeEventTitle}</p>
+                    )}
+
+                    {v.changeNote && (
+                      <p className="text-xs text-muted-foreground">{v.changeNote}</p>
+                    )}
+
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      {v.uploadedByName && <span>By {v.uploadedByName}</span>}
+                      <span>{new Date(v.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const CATEGORIES = ["Operator", "Engineering", "Safety", "Operations", "Maintenance"] as const;
 type Category = typeof CATEGORIES[number];
@@ -71,6 +158,7 @@ export default function DocumentLibrary() {
   const [filterCategory, setFilterCategory] = useState<string>("All");
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [versionDoc, setVersionDoc] = useState<{ id: number; name: string } | null>(null);
 
   // Upload form state
   const [docName, setDocName] = useState("");
@@ -491,11 +579,20 @@ export default function DocumentLibrary() {
                   )}
                   <span className="text-sm font-medium text-foreground">{doc.name}</span>
                 </div>
-                {doc.fileUrl && (
-                  <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0">
-                    <Eye className="h-4 w-4" />
-                  </a>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setVersionDoc({ id: doc.id, name: doc.name })}
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    title="Version history"
+                  >
+                    <History className="h-4 w-4" />
+                  </button>
+                  {doc.fileUrl && (
+                    <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                      <Eye className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                 {doc.category && (
@@ -527,6 +624,15 @@ export default function DocumentLibrary() {
         <div className="text-center py-12 text-muted-foreground text-sm">
           No documents match your search.
         </div>
+      )}
+
+      {/* Version History Drawer */}
+      {versionDoc && (
+        <VersionHistoryDrawer
+          documentId={versionDoc.id}
+          documentName={versionDoc.name}
+          onClose={() => setVersionDoc(null)}
+        />
       )}
     </div>
   );

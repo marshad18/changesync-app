@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useLocation, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,47 @@ import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Loader2,
   FileText, Edit3, Save, Columns2, LayoutTemplate, Send,
   User, Download, ExternalLink, Sparkles, Table2, AlertCircle,
+  ZoomIn, ZoomOut, RotateCcw,
 } from "lucide-react";
 import ChangeProgressStepper from "@/components/ChangeProgressStepper";
+
+// ── Zoom controls component ───────────────────────────────────────────────────
+function ZoomControls({ zoom, onZoom }: { zoom: number; onZoom: (z: number) => void }) {
+  const STEPS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+  const currentIdx = STEPS.findIndex(s => Math.abs(s - zoom) < 0.01);
+  const canZoomIn = currentIdx < STEPS.length - 1;
+  const canZoomOut = currentIdx > 0;
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => canZoomOut && onZoom(STEPS[currentIdx - 1])}
+        disabled={!canZoomOut}
+        title="Zoom out"
+        className="w-6 h-6 flex items-center justify-center rounded transition-colors disabled:opacity-30"
+        style={{ background: "oklch(0.92 0.006 255)", color: "oklch(0.40 0.04 255)" }}
+      >
+        <ZoomOut className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => onZoom(1.0)}
+        title="Reset zoom"
+        className="h-6 px-2 rounded text-[10px] font-mono font-semibold transition-colors"
+        style={{ background: "oklch(0.92 0.006 255)", color: "oklch(0.40 0.04 255)", minWidth: "44px" }}
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        onClick={() => canZoomIn && onZoom(STEPS[currentIdx + 1])}
+        disabled={!canZoomIn}
+        title="Zoom in"
+        className="w-6 h-6 flex items-center justify-center rounded transition-colors disabled:opacity-30"
+        style={{ background: "oklch(0.92 0.006 255)", color: "oklch(0.40 0.04 255)" }}
+      >
+        <ZoomIn className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 // ── Change log table: shows each cell/field that was modified ─────────────────
 interface CellChange {
@@ -169,6 +208,7 @@ function ModifiedDocViewer({
         </div>
       ) : canUseOfficeViewer ? (
         <div className="flex flex-col flex-1">
+          {/* Document viewer FIRST at the top */}
           <iframe
             src={officeViewerUrl}
             title={name}
@@ -177,11 +217,58 @@ function ModifiedDocViewer({
             onError={() => setOfficeError(true)}
             allow="fullscreen"
           />
+          {/* Change annotation panel BELOW the viewer */}
+          {changeLog.length > 0 && (
+            <div
+              className="shrink-0 px-3 pt-3 pb-2"
+              style={{ borderTop: "1px solid oklch(0.90 0.006 255)", background: "oklch(0.985 0.008 145 / 0.5)" }}
+            >
+              <div
+                className="flex items-center gap-2 mb-2 text-[10px] font-semibold uppercase tracking-widest"
+                style={{ color: "oklch(0.40 0.14 145)" }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full inline-block"
+                  style={{ background: "oklch(0.55 0.18 145)" }}
+                />
+                {changeLog.length} value{changeLog.length !== 1 ? "s" : ""} updated — green highlights visible in downloaded file
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {changeLog.map((c, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg"
+                    style={{
+                      background: "oklch(0.96 0.012 255)",
+                      border: "1px solid oklch(0.88 0.008 255)",
+                    }}
+                  >
+                    <span className="font-mono" style={{ color: "oklch(0.55 0.04 255)" }}>{c.sheetName} {c.cellRef}</span>
+                    <span
+                      className="font-mono line-through text-[10px]"
+                      style={{ color: "oklch(0.60 0.16 25)" }}
+                    >
+                      {c.oldValue.length > 20 ? c.oldValue.substring(0, 18) + "…" : c.oldValue}
+                    </span>
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="shrink-0">
+                      <path d="M3 10h11M10 6l4 4-4 4" stroke="oklch(0.55 0.04 255)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span
+                      className="font-mono font-bold text-[10px] px-1 rounded"
+                      style={{ background: "oklch(0.88 0.14 145)", color: "oklch(0.28 0.14 145)" }}
+                    >
+                      {c.newValue.length > 20 ? c.newValue.substring(0, 18) + "…" : c.newValue}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div
             className="flex items-center justify-between px-4 py-2 shrink-0 text-xs text-muted-foreground"
             style={{ borderTop: "1px solid oklch(0.90 0.006 255)" }}
           >
-            <span>{changeLog.length} cell{changeLog.length !== 1 ? "s" : ""} updated (highlighted in yellow)</span>
+            <span>Green highlights visible when you download the file</span>
             <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 hover:text-foreground transition-colors"
             >
@@ -196,12 +283,6 @@ function ModifiedDocViewer({
           <a href={modifiedFileUrl} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" size="sm" className="gap-2"><ExternalLink className="h-4 w-4" /> Open in new tab</Button>
           </a>
-        </div>
-      )}
-      {/* Change annotation panel below the viewer */}
-      {changeLog.length > 0 && (
-        <div className="p-4 overflow-y-auto shrink-0" style={{ maxHeight: "320px", borderTop: "1px solid oklch(0.90 0.006 255)" }}>
-          <ChangeAnnotationPanel changeLog={changeLog} />
         </div>
       )}
     </div>
@@ -353,11 +434,44 @@ export default function DraftReview() {
   const [approverName, setApproverName] = useState("");
   const [approverEmail, setApproverEmail] = useState("");
   const [routeSuccess, setRouteSuccess] = useState<{approvalLink: string; emailSent: boolean} | null>(null);
+  const [leftZoom, setLeftZoom] = useState(1.0);
+  const [rightZoom, setRightZoom] = useState(1.0);
 
-  const { data, isLoading, refetch } = trpc.drafts.getById.useQuery({ id }, { enabled: !!id });
+  // Poll every 5 seconds when the draft is in routed_for_approval state so the UI
+  // updates automatically once the approver clicks the link in their email.
+  const { data, isLoading, refetch } = trpc.drafts.getById.useQuery(
+    { id },
+    {
+      enabled: !!id,
+      refetchInterval: (query) => {
+        const status = query.state.data?.draft?.status;
+        // Only poll while waiting for external approval action
+        if (status === "routed_for_approval") return 5000;
+        return false;
+      },
+    }
+  );
   const updateContentMutation = trpc.drafts.updateContent.useMutation();
   const routeMutation = trpc.drafts.routeForApproval.useMutation();
   const reGenMutation = trpc.drafts.reGenerateModifiedFile.useMutation();
+  const [autoRegenTriggered, setAutoRegenTriggered] = useState(false);
+
+  // Auto-regenerate when a draft has a modifiedFileUrl but no annotatedOriginalUrl.
+  // This happens for drafts generated before the annotation feature was added.
+  // Silently regenerate so all users see the highlighted version.
+  useEffect(() => {
+    if (!data || autoRegenTriggered) return;
+    const draft = data.draft as { modifiedFileUrl?: string | null; annotatedOriginalUrl?: string | null; status?: string };
+    const hasModified = !!draft.modifiedFileUrl;
+    const hasAnnotated = !!draft.annotatedOriginalUrl;
+    const isTerminal = draft.status === 'approved' || draft.status === 'rejected';
+    if (hasModified && !hasAnnotated && !isTerminal) {
+      setAutoRegenTriggered(true);
+      reGenMutation.mutateAsync({ draftId: id })
+        .then(() => refetch())
+        .catch(() => { /* silent — user can still click Re-generate manually */ });
+    }
+  }, [data, autoRegenTriggered, id]);
 
   const handleRouteForApproval = async () => {
     if (!approverEmail.trim()) {
@@ -640,6 +754,7 @@ export default function DraftReview() {
                       Old values highlighted
                     </span>
                   )}
+                  <ZoomControls zoom={leftZoom} onZoom={setLeftZoom} />
                   <span
                     className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[200px]"
                     style={{ background: "oklch(0.92 0.006 255)", color: "oklch(0.50 0.04 255)" }}
@@ -649,17 +764,25 @@ export default function DraftReview() {
                   </span>
                 </div>
               </div>
-              {/* Panel body — inline document viewer */}
+              {/* Panel body — inline document viewer with zoom */}
               <div className="flex-1 overflow-auto">
-                {leftPanelFileUrl ? (
-                  <OriginalDocViewer
-                    fileUrl={leftPanelFileUrl}
-                    fileName={doc?.fileName ?? doc?.name}
-                    mimeType={doc?.mimeType}
-                  />
-                ) : (
-                  <LeftPanelContent doc={doc ?? null} />
-                )}
+                <div style={{
+                  transform: `scale(${leftZoom})`,
+                  transformOrigin: "top left",
+                  width: `${100 / leftZoom}%`,
+                  height: leftZoom !== 1 ? `${100 / leftZoom}%` : undefined,
+                  minHeight: leftZoom !== 1 ? `${100 / leftZoom}%` : undefined,
+                }}>
+                  {leftPanelFileUrl ? (
+                    <OriginalDocViewer
+                      fileUrl={leftPanelFileUrl}
+                      fileName={doc?.fileName ?? doc?.name}
+                      mimeType={doc?.mimeType}
+                    />
+                  ) : (
+                    <LeftPanelContent doc={doc ?? null} />
+                  )}
+                </div>
               </div>
             </div>
 
@@ -672,32 +795,25 @@ export default function DraftReview() {
                 boxShadow: "0 1px 6px oklch(0.38 0.16 265 / 0.08)",
               }}
             >
-              {/* Panel header */}
+              {/* Panel header — row 1: title + action buttons */}
               <div
-                className="flex items-center justify-between px-5 py-3 shrink-0"
+                className="flex items-center justify-between px-5 py-2.5 shrink-0"
                 style={{
-                  borderBottom: "1px solid oklch(0.38 0.16 265 / 0.15)",
+                  borderBottom: "1px solid oklch(0.38 0.16 265 / 0.12)",
                   background: "oklch(0.38 0.16 265 / 0.05)",
                 }}
               >
-                <div className="flex flex-col gap-0.5">
-                  <span
-                    className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2"
-                    style={{ color: "oklch(0.42 0.18 265)" }}
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {hasModifiedFile ? "Updated Document" : "AI Change Summary"}
-                  </span>
-                  {hasModifiedFile && (
-                    <span className="text-[10px] text-muted-foreground" style={{ paddingLeft: "18px" }}>
-                      New values highlighted in green — download is clean (no highlights)
-                    </span>
-                  )}
-                </div>
+                <span
+                  className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2"
+                  style={{ color: "oklch(0.42 0.18 265)" }}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {hasModifiedFile ? "Updated Document" : "AI Change Summary"}
+                </span>
                 <div className="flex items-center gap-2">
                   {hasModifiedFile && doc?.fileName && (
                     <span
-                      className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[160px]"
+                      className="text-[10px] font-medium px-2 py-0.5 rounded-md truncate max-w-[120px]"
                       style={{ background: "oklch(0.45 0.12 145 / 0.15)", color: "oklch(0.38 0.14 145)" }}
                       title={`Updated: ${doc.fileName}`}
                     >
@@ -751,6 +867,16 @@ export default function DraftReview() {
                   )}
                 </div>
               </div>
+              {/* Panel header — row 2: zoom controls + subtitle */}
+              <div
+                className="flex items-center justify-between px-5 py-1.5 shrink-0"
+                style={{ borderBottom: "1px solid oklch(0.38 0.16 265 / 0.10)", background: "oklch(0.38 0.16 265 / 0.03)" }}
+              >
+                <span className="text-[10px] text-muted-foreground">
+                  {hasModifiedFile ? "New values highlighted in green — download is clean" : "AI-generated change summary"}
+                </span>
+                <ZoomControls zoom={rightZoom} onZoom={setRightZoom} />
+              </div>
 
               {/* Change legend */}
               <div
@@ -790,6 +916,13 @@ export default function DraftReview() {
 
               {/* Panel body */}
               <div className="flex-1 overflow-auto" style={{ maxHeight: "700px" }}>
+                <div style={{
+                  transform: `scale(${rightZoom})`,
+                  transformOrigin: "top left",
+                  width: `${100 / rightZoom}%`,
+                  height: rightZoom !== 1 ? `${100 / rightZoom}%` : undefined,
+                  minHeight: rightZoom !== 1 ? `${100 / rightZoom}%` : undefined,
+                }}>
                 {hasModifiedFile && modifiedFileUrl && !isEditing ? (
                   /* Show the actual modified file (Excel/PDF) */
                   <ModifiedDocViewer
@@ -876,6 +1009,7 @@ export default function DraftReview() {
                     </div>
                   </div>
                 )}
+                </div>{/* end zoom wrapper */}
               </div>
             </div>
           </div>

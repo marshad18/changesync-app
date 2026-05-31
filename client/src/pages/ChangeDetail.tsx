@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Loader2, Zap, FileText, CheckCircle2,
   Eye, AlertTriangle, Weight, DollarSign, Package, Send, Clock,
+  ArrowRightLeft, ChevronRight,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 import ChangeProgressStepper, { WorkflowStep } from "@/components/ChangeProgressStepper";
@@ -62,7 +63,19 @@ export default function ChangeDetail() {
   const [, setLocation] = useLocation();
   const [expandedAnalysis, setExpandedAnalysis] = useState<number | null>(null);
 
-  const { data, isLoading, refetch } = trpc.changeEvents.getById.useQuery({ id }, { enabled: !!id });
+  // Poll every 5 seconds when any draft is routed for approval so the page
+  // reflects the approved status as soon as the approver acts on their email link.
+  const { data, isLoading, refetch } = trpc.changeEvents.getById.useQuery(
+    { id },
+    {
+      enabled: !!id,
+      refetchInterval: (query) => {
+        const drafts = query.state.data?.drafts ?? [];
+        const hasRoutedDraft = drafts.some((d: { status?: string }) => d.status === "routed_for_approval");
+        return hasRoutedDraft ? 5000 : false;
+      },
+    }
+  );
   const { data: libraryDocs } = trpc.documents.list.useQuery();
   const analyzeMutation = trpc.changeEvents.analyzeImpact.useMutation();
   const generateMutation = trpc.changeEvents.generateDrafts.useMutation();
@@ -115,6 +128,14 @@ export default function ChangeDetail() {
   }
 
   const { event, assets, skus, analyses, drafts } = data;
+
+  // Parse manualDiff from JSON stored on the event
+  const manualDiff: Array<{ fieldName: string; oldValue: string; newValue: string; unit: string }> = (() => {
+    try {
+      if ((event as any).manualDiff) return JSON.parse((event as any).manualDiff);
+    } catch { /* ignore */ }
+    return [];
+  })();
   const impactedAnalyses = analyses.filter((a) => a.impacted);
   const notImpactedAnalyses = analyses.filter((a) => !a.impacted);
   const status = event.status ?? "draft";
@@ -206,6 +227,60 @@ export default function ChangeDetail() {
             </span>
           )}
         </div>
+
+        {/* ── Detected Changes from Manuals ── */}
+        {manualDiff.length > 0 && (
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: "oklch(1 0 0)", border: "1px solid oklch(0.58 0.22 260 / 0.25)", boxShadow: "0 2px 8px oklch(0.42 0.18 265 / 0.08)" }}
+          >
+            <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, oklch(0.58 0.22 260), oklch(0.72 0.18 280))" }} />
+            <div className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "oklch(0.58 0.22 260 / 0.12)", border: "1px solid oklch(0.58 0.22 260 / 0.25)" }}
+                >
+                  <ArrowRightLeft className="h-4 w-4" style={{ color: "oklch(0.58 0.22 260)" }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground">Detected Changes from Manuals</p>
+                  <p className="text-xs text-muted-foreground">{manualDiff.length} value{manualDiff.length !== 1 ? "s" : ""} identified by AI — these will be applied to all impacted documents</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {manualDiff.map((change, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+                    style={{ background: "oklch(0.97 0.006 255)", border: "1px solid oklch(0.90 0.008 255)" }}
+                  >
+                    <span
+                      className="text-xs font-semibold w-36 shrink-0 truncate"
+                      style={{ color: "oklch(0.45 0.06 255)" }}
+                      title={change.fieldName}
+                    >
+                      {change.fieldName}
+                    </span>
+                    <span
+                      className="text-sm font-mono px-2 py-0.5 rounded line-through shrink-0"
+                      style={{ background: "oklch(0.96 0.012 25 / 0.60)", color: "oklch(0.55 0.20 25)", border: "1px solid oklch(0.82 0.10 25 / 0.40)" }}
+                    >
+                      {change.oldValue || "(new)"}{change.unit ? " " + change.unit : ""}
+                    </span>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span
+                      className="text-sm font-mono px-2 py-0.5 rounded font-semibold shrink-0"
+                      style={{ background: "oklch(0.95 0.012 145 / 0.60)", color: "oklch(0.40 0.18 145)", border: "1px solid oklch(0.75 0.12 145 / 0.40)" }}
+                    >
+                      {change.newValue}{change.unit ? " " + change.unit : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Change Summary Cards ── */}
         <div className="grid md:grid-cols-2 gap-5">

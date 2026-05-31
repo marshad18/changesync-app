@@ -38,8 +38,16 @@ function statusClass(status: string) {
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
-  const { data: events, isLoading } = trpc.changeEvents.list.useQuery();
-  const { data: documents } = trpc.documents.list.useQuery();
+  // Refetch on window focus so the dashboard shows updated approved counts
+  // when the user returns after approving a document in another tab.
+  const { data: events, isLoading } = trpc.changeEvents.list.useQuery(
+    undefined,
+    { refetchOnWindowFocus: true }
+  );
+  const { data: documents } = trpc.documents.list.useQuery(
+    undefined,
+    { refetchOnWindowFocus: true }
+  );
 
   const stats = {
     total: events?.length ?? 0,
@@ -129,7 +137,12 @@ export default function Dashboard() {
                       {event.affectedSku && (
                         <span>SKU: <span className="text-foreground/70">{event.affectedSku}</span></span>
                       )}
-                      <span>{new Date(event.createdAt).toLocaleDateString()}</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {new Date(event.createdAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {', '}
+                        {new Date(event.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1 group-hover:text-primary transition-colors" />

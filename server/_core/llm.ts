@@ -57,6 +57,8 @@ export type ToolChoice =
 
 export type InvokeParams = {
   messages: Message[];
+  /** Optional model override. Defaults to gemini-2.5-flash if not specified. */
+  model?: string;
   tools?: Tool[];
   toolChoice?: ToolChoice;
   tool_choice?: ToolChoice;
@@ -270,6 +272,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   const {
     messages,
+    model,
     tools,
     toolChoice,
     tool_choice,
@@ -280,7 +283,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: model ?? "gemini-2.5-flash",
     messages: messages.map(normalizeMessage),
   };
 

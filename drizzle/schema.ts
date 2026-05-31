@@ -79,6 +79,8 @@ export const changeEvents = mysqlTable("changeEvents", {
     .default("draft")
     .notNull(),
   createdBy: int("createdBy"),
+  /** JSON array of ChangeEntry objects extracted from old/new manual comparison */
+  manualDiff: text("manualDiff"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -217,3 +219,42 @@ export const documentDrafts = mysqlTable("documentDrafts", {
 
 export type DocumentDraft = typeof documentDrafts.$inferSelect;
 export type InsertDocumentDraft = typeof documentDrafts.$inferInsert;
+
+// ─── App Settings ─────────────────────────────────────────────────────────────
+
+export const appSettings = mysqlTable("appSettings", {
+  key: varchar("key", { length: 128 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = typeof appSettings.$inferInsert;
+
+// ─── Document Versions ───────────────────────────────────────────────────────
+
+export const documentVersions = mysqlTable("documentVersions", {
+  id: int("id").autoincrement().primaryKey(),
+  /** The document this version belongs to */
+  documentId: int("documentId").notNull(),
+  /** Version number (1, 2, 3, ...) */
+  versionNumber: int("versionNumber").notNull(),
+  /** S3 URL of this version's file */
+  fileUrl: text("fileUrl").notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 128 }),
+  /** Optional: which change event produced this version */
+  changeEventId: int("changeEventId"),
+  /** Optional: title of the change event (denormalised for display) */
+  changeEventTitle: varchar("changeEventTitle", { length: 255 }),
+  /** Human-readable note about what changed in this version */
+  changeNote: text("changeNote"),
+  /** Who uploaded/created this version */
+  uploadedBy: int("uploadedBy"),
+  uploadedByName: varchar("uploadedByName", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+export type InsertDocumentVersion = typeof documentVersions.$inferInsert;

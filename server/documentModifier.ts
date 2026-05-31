@@ -10,6 +10,7 @@
  */
 
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import * as XLSX from "xlsx";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import mammoth from "mammoth";
@@ -19,13 +20,9 @@ import {
   BorderStyle,
 } from "docx";
 import { storagePut } from "./storage";
-import { execSync } from "child_process";
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from "fs";
-import { tmpdir } from "os";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { PDFParse } from "pdf-parse";
+// Note: execSync, fs, tmpdir, path removed — no longer needed for PDF/Word paths
+// (all document processing now uses pure JS libraries that work in Cloud Run)
 function randomSuffix() {
   return Math.random().toString(36).substring(2, 10);
 }
@@ -77,28 +74,71 @@ function normalizeValue(val: string): string {
 }
 
 /**
- * Check if a cell value matches an old value from the change list.
- * Supports exact match, substring match (for longer descriptions), and numeric match.
- * If oldValue is empty, this is a "new addition" — handled separately in modifyExcel.
+ * Normalise a value for comparison:
+ * - trim whitespace
+ * - lowercase
+ * - collapse all whitespace (including \n, \r, \t) to a single space
+ * - normalise all dash variants (en-dash, em-dash) to hyphen-minus
+ * - strip thousands commas from numbers
  */
-function matchesOldValue(cellStr: string, oldValue: string): boolean {
-  if (!oldValue || oldValue.trim() === "") return false;
-  const cell = normalizeValue(cellStr);
-  const old = normalizeValue(oldValue);
+function normForMatch(val: string): string {
+  return val
+    .replace(/[\r\n\t]+/g, " ")   // newlines → space
+    .replace(/\s+/g, " ")          // collapse whitespace
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2013\u2014]/g, "-") // en/em-dash → hyphen
+    .replace(/,(?=\d)/g, "");        // strip thousands commas (4,320 → 4320)
+}
 
-  // Exact match
+/**
+ * Check if a cell value matches an old value from the change list.
+ *
+ * Matching strategy (in order of precision):
+ * 1. Exact match after normForMatch (handles newlines, dash variants, thousands commas)
+ * 2. Cell contains the old value as a substring (only for values ≥ 6 chars to avoid false positives)
+ *
+ * Deliberately NO bare-numeric match — "40" must NOT match "40 arc-min" or "40 grams".
+ * The caller (compareManuals) is responsible for providing values that include units
+ * so the match is specific enough (e.g. "40 ml" not just "40").
+ */
+function matchesOldValue(cellStr: string, oldValue: string, unit?: string): boolean {
+  if (!oldValue || oldValue.trim() === "") return false;
+
+  const cell = normForMatch(cellStr);
+  const old = normForMatch(oldValue);
+
+  // 1. Exact match
   if (cell === old) return true;
 
-  // Cell contains the old value as a whole word/phrase
-  // (e.g. "1.5 kW" in "Motor rated at 1.5 kW")
-  if (old.length >= 3 && cell.includes(old)) return true;
+  // 2. Substring match — only for values long enough to be specific
+  //    Minimum 6 chars to avoid matching short numbers like "40" in unrelated cells
+  if (old.length >= 6 && cell.includes(old)) return true;
 
-  // Numeric match — "1.5" matches "1.5 kW", "1440" matches "1440 rpm"
-  // Strip commas and units before comparing (handles "1,440 RPM" vs "1440")
-  const stripUnits = (s: string) => s.replace(/[,]/g, "").replace(/[a-z%°]+$/i, "").trim();
-  const numOld = parseFloat(stripUnits(old));
-  const numCell = parseFloat(stripUnits(cell));
-  if (!isNaN(numOld) && !isNaN(numCell) && numOld === numCell && old.length >= 1) return true;
+  // 3. Compound match: try value+unit variants when the bare value is short (< 6 chars)
+  //    e.g. oldValue="155", unit="g" → try "155g", "155gm", "155 g", "155 gm"
+  //    This handles documents that store "155gm" when the user entered "155" with unit "g"
+  if (unit && unit.trim()) {
+    const u = unit.trim().toLowerCase();
+    const variants = [
+      old + u,           // "155g"
+      old + " " + u,     // "155 g"
+      old + u + "m",     // "155gm" (grams abbreviation)
+      old + " " + u + "m", // "155 gm"
+    ];
+    for (const v of variants) {
+      if (cell === v) return true;
+      if (v.length >= 4 && cell.includes(v)) return true;
+    }
+  }
+
+  // 4. Numeric prefix match: if oldValue is a pure number, check if the cell starts
+  //    with that number followed by a non-digit (e.g. "155gm" starts with "155" then "g")
+  //    Only apply when oldValue is a pure integer/decimal (no letters)
+  if (/^\d+(\.\d+)?$/.test(old)) {
+    const numericPrefixRegex = new RegExp(`^${old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^\\d]`);
+    if (numericPrefixRegex.test(cell)) return true;
+  }
 
   return false;
 }
@@ -122,8 +162,9 @@ function fieldNameMatchesLabel(fieldName: string, label: string): boolean {
 
 /**
  * Build the replacement value string.
- * If the cell contained more than just the old value (e.g. "Motor: 1.5 kW"),
- * do a string replacement to preserve the surrounding text.
+ * The newValue from compareManuals already contains the full cell value
+ * (including units and format) so we return it directly.
+ * Only falls back to substring replacement if the cell has surrounding text.
  */
 function buildNewValue(
   originalCellValue: string | number | boolean | Date | null,
@@ -134,221 +175,634 @@ function buildNewValue(
   if (originalCellValue === null || originalCellValue === undefined) return newValue;
 
   const cellStr = String(originalCellValue);
-  const unitSuffix = unit ? ` ${unit}` : "";
+  const cellNorm = normForMatch(cellStr);
+  const oldNorm = normForMatch(oldValue);
 
-  // If the cell is purely the old value (or a number matching it), return the new value directly
-  if (normalizeValue(cellStr) === normalizeValue(oldValue)) {
-    // Try to preserve numeric type
-    const parsed = parseFloat(newValue);
-    if (typeof originalCellValue === "number" && !isNaN(parsed)) {
-      return parsed;
-    }
-    return newValue + unitSuffix;
+  // 1. Exact match: cell IS the old value — return new value directly.
+  if (cellNorm === oldNorm) {
+    return newValue;
   }
 
-  // Otherwise do a substring replacement to preserve surrounding text
-  const regex = new RegExp(oldValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-  return cellStr.replace(regex, newValue + unitSuffix);
+  // 2. Compound unit match: cell is "155gm" but old is "155" with unit "g".
+  //    Detect the unit suffix in the cell and preserve it in the output.
+  //    e.g. cell="155gm", old="155", new="170", unit="g" → "170gm"
+  if (unit && unit.trim() && /^\d+(\.\d+)?$/.test(oldNorm)) {
+    const u = unit.trim().toLowerCase();
+    const variants = [
+      { suffix: u + "m", pattern: oldNorm + u + "m" },   // "155gm"
+      { suffix: " " + u + "m", pattern: oldNorm + " " + u + "m" }, // "155 gm"
+      { suffix: u, pattern: oldNorm + u },                // "155g"
+      { suffix: " " + u, pattern: oldNorm + " " + u },   // "155 g"
+    ];
+    for (const { suffix, pattern } of variants) {
+      if (cellNorm === pattern) {
+        // Preserve the suffix from the original cell (exact case/spacing)
+        const cellSuffix = cellStr.slice(oldValue.length);
+        return newValue + cellSuffix;
+      }
+      if (cellNorm.includes(pattern)) {
+        // Cell has surrounding text — replace the compound form
+        const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const replaced = cellStr.replace(new RegExp(escapedPattern, "gi"), newValue + suffix);
+        if (replaced !== cellStr) return replaced;
+      }
+    }
+  }
+
+  // 3. Cell has surrounding text — do a targeted substring replacement.
+  //    Normalise dashes in both before replacing so "75 – 90" matches "75 - 90" in cell.
+  const normOld = oldValue.replace(/[\u2013\u2014]/g, "-");
+  const escapedOld = normOld.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(escapedOld, "gi");
+  const replaced = cellStr.replace(regex, newValue);
+  if (replaced !== cellStr) return replaced;
+
+  // Fallback: just return the new value
+  return newValue;
 }
 
 /**
- * Modify an Excel workbook using ExcelJS to preserve ALL original formatting.
- * Only cells matching old values are changed — everything else is untouched.
- * Changed cells are highlighted with a bright yellow fill (#FFFF00).
+ * Helper: get a cell's string value from ExcelJS.
+ */
+function getCellStr(cell: ExcelJS.Cell): string {
+  const v = cell.value;
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object" && "richText" in (v as object)) {
+    return (v as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("");
+  }
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+}
+
+/**
+ * Check if a cell is the master (top-left) cell of its merge group.
+ * ExcelJS reports the same value on every row of a merged range — we must only
+ * process the master cell to avoid highlighting/modifying the same logical cell
+ * multiple times (once per row in the merge).
+ *
+ * For non-merged cells, isMerged is false and the cell is always its own master.
+ */
+function isMasterCell(cell: ExcelJS.Cell): boolean {
+  if (!cell.isMerged) return true;
+  // cell.master is the top-left cell of the merge range
+  return cell.address === cell.master.address;
+}
+
+/**
+ * After setting a fill on a master cell, ExcelJS propagates that fill to all slave
+ * cells in the merge range when writing the file. This helper explicitly resets every
+ * slave cell's fill to "none" so the colour only appears on the master row visually.
+ */
+function clearSlaveFills(worksheet: ExcelJS.Worksheet, masterCell: ExcelJS.Cell): void {
+  if (!masterCell.isMerged) return;
+  // Access the internal _merges map to find the merge range for this master cell
+  const merges = (worksheet as any)._merges as Record<string, { model: { top: number; left: number; bottom: number; right: number } }> | undefined;
+  if (!merges) return;
+  const masterKey = masterCell.address; // e.g. "G71"
+  const range = merges[masterKey];
+  if (!range) return;
+  const { top, left, bottom, right } = range.model;
+  for (let r = top + 1; r <= bottom; r++) {
+    for (let c = left; c <= right; c++) {
+      const slaveCell = worksheet.getCell(r, c);
+      slaveCell.fill = { type: "none" } as any;
+    }
+  }
+}
+
+/**
+ * Produce the ANNOTATED ORIGINAL Excel: original values kept, matched cells highlighted YELLOW.
+ * This is the LEFT panel in DraftReview — shows where the old values are.
+ */
+/**
+ * Determine whether a row in the lube map is the data row for the affected equipment.
+ *
+ * The Lube Map structure has ONE data row per component — col A of that row contains
+ * the component name (e.g. "Gear box"). The rows below it are empty visual spacers
+ * (merged cells for height). We must ONLY match the actual data row where col A
+ * itself contains the equipment name. Walking upward into spacer rows is wrong.
+ *
+ * @param worksheet  The ExcelJS worksheet to scan
+ * @param rowNumber  The 1-based row number to check
+ * @param equipmentName  The affected equipment name from the change event (e.g. "Gearbox")
+ */
+function isEquipmentRow(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  equipmentName: string
+): boolean {
+  if (!equipmentName || equipmentName.trim() === "") return true; // no equipment constraint — allow all rows (weight/price changes)
+
+  // Only check col A of THIS row — do NOT walk upward.
+  // Empty rows below a data row are visual spacers and must never be touched.
+  const colA = getCellStr(worksheet.getCell(rowNumber, 1)).trim();
+  if (!colA) return false;
+
+  // Build normalised variants to handle "gear box" vs "gearbox" spelling
+  const normLabel = normForMatch(colA);
+  const normEquip = normForMatch(equipmentName);
+  const compactEquip = normEquip.replace(/\s+/g, ""); // "gear box" → "gearbox"
+  const compactLabel = normLabel.replace(/\s+/g, "");
+
+  return normLabel.includes(normEquip) || normLabel.includes(compactEquip) ||
+         normEquip.includes(normLabel) || compactEquip.includes(normLabel) ||
+         compactLabel.includes(compactEquip) || compactEquip.includes(compactLabel);
+}
+
+/**
+ * Apply highlight fills (yellow or green) directly to an Excel buffer at the XML level.
+ *
+ * This function bypasses ExcelJS's style-sharing mechanism entirely by working
+ * directly on the XLSX ZIP archive. It:
+ * 1. Adds the highlight fill colour to the styles XML (if not already present).
+ * 2. For each cell address in `cellsToHighlight`, creates a new xf (style) entry
+ *    that is identical to the cell's current style but with the highlight fillId.
+ * 3. Updates the cell's `s` attribute in the worksheet XML to point to the new style.
+ *
+ * KEY FIX: Uses the `count` attribute from `<cellXfs count="N">` to determine the
+ * correct starting index for new styles. The regex-based xf parser misses some
+ * multi-line entries, so counting from the attribute is the only reliable method.
+ *
+ * @param buffer            The original Excel buffer (unmodified by ExcelJS fills)
+ * @param cellsToHighlight  Map of cell address → highlight colour ("yellow" | "green")
+ */
+async function applyHighlightsToExcelXml(
+  buffer: Buffer,
+  cellsToHighlight: Map<string, "yellow" | "green">
+): Promise<Buffer> {
+  if (cellsToHighlight.size === 0) return buffer;
+
+  const zip = await JSZip.loadAsync(buffer);
+  const files = Object.keys(zip.files);
+  const sheetFile = files.find(f => f.includes("worksheets/sheet") && !f.endsWith("/"));
+  if (!sheetFile) return buffer;
+
+  let sheetXml = await zip.file(sheetFile)!.async("string");
+  let stylesXml = await zip.file("xl/styles.xml")!.async("string");
+
+  // --- Step 1: Ensure highlight fills exist in the styles XML ---
+  const fillsSection = stylesXml.match(/<fills[^>]*>([\s\S]*?)<\/fills>/)?.[1] ?? "";
+  const fillMatches = Array.from(fillsSection.matchAll(/<fill>([\s\S]*?)<\/fill>/g));
+
+  const YELLOW_ARGB = "FFFFFF00";
+  const GREEN_ARGB = "FF92D050";
+
+  let yellowFillId = fillMatches.findIndex(m => m[1].includes(YELLOW_ARGB));
+  let greenFillId = fillMatches.findIndex(m => m[1].includes(GREEN_ARGB));
+
+  const newFills: string[] = [];
+  if (yellowFillId < 0) {
+    yellowFillId = fillMatches.length + newFills.length;
+    newFills.push(`<fill><patternFill patternType="solid"><fgColor rgb="${YELLOW_ARGB}"/></patternFill></fill>`);
+  }
+  if (greenFillId < 0) {
+    greenFillId = fillMatches.length + newFills.length;
+    newFills.push(`<fill><patternFill patternType="solid"><fgColor rgb="${GREEN_ARGB}"/></patternFill></fill>`);
+  }
+  if (newFills.length > 0) {
+    stylesXml = stylesXml.replace(
+      /(<fills count=")(\d+)(")/,
+      (_, pre, count, post) => `${pre}${parseInt(count) + newFills.length}${post}`
+    );
+    stylesXml = stylesXml.replace("</fills>", newFills.join("") + "</fills>");
+  }
+
+  // --- Step 2: Get the correct current xf count from the count attribute ---
+  // IMPORTANT: Do NOT use regex match count — some xf entries span multiple lines
+  // and the regex misses them. The count attribute is always correct.
+  const currentXfCount = parseInt(
+    stylesXml.match(/<cellXfs count="(\d+)"/)?.[1] ?? "0"
+  );
+
+  // Parse xf entries for attribute lookup (regex may miss some, but we only need
+  // to look up attributes for cells we're highlighting — indices 0..52 are safe)
+  const cellXfsSection = stylesXml.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/)?.[1] ?? "";
+  const xfEntries = Array.from(cellXfsSection.matchAll(/<xf([^>]*)(?:\/>|>[\s\S]*?<\/xf>)/g));
+
+  // --- Step 3: For each cell to highlight, create a new xf with the highlight fill ---
+  const styleToHighlightStyle = new Map<number, number>(); // originalStyleIdx → newHighlightStyleIdx
+  const newXfEntries: string[] = [];
+  let nextStyleIdx = currentXfCount;
+
+  // Get the current style index for each cell to highlight
+  const cellCurrentStyle = new Map<string, number>();
+  for (const addr of Array.from(cellsToHighlight.keys())) {
+    const m = sheetXml.match(new RegExp(`<c r="${addr}" s="(\\d+)"`));
+    if (m) cellCurrentStyle.set(addr, parseInt(m[1]));
+  }
+
+  // Create new highlight styles (one per unique original style)
+  for (const [addr, colour] of Array.from(cellsToHighlight.entries())) {
+    const currentStyleIdx = cellCurrentStyle.get(addr);
+    if (currentStyleIdx === undefined) continue;
+    const fillId = colour === "yellow" ? yellowFillId : greenFillId;
+    if (!styleToHighlightStyle.has(currentStyleIdx)) {
+      const currentAttrs = xfEntries[currentStyleIdx]?.[1] ?? "";
+      const numFmt = currentAttrs.match(/numFmtId="(\d+)"/)?.[ 1] ?? "0";
+      const font   = currentAttrs.match(/fontId="(\d+)"/)?.[ 1] ?? "0";
+      const border = currentAttrs.match(/borderId="(\d+)"/)?.[ 1] ?? "0";
+      // Build new xf WITHOUT applyFill — ExcelJS reads fills correctly when applyFill is absent
+      const newXf = ` numFmtId="${numFmt}" fontId="${font}" fillId="${fillId}" borderId="${border}" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"`;
+      styleToHighlightStyle.set(currentStyleIdx, nextStyleIdx);
+      newXfEntries.push(`<xf${newXf}/>`);
+      nextStyleIdx++;
+    }
+  }
+
+  if (newXfEntries.length > 0) {
+    stylesXml = stylesXml.replace(
+      /(<cellXfs count=")(\d+)(")/,
+      (_, pre, count, post) => `${pre}${parseInt(count) + newXfEntries.length}${post}`
+    );
+    stylesXml = stylesXml.replace("</cellXfs>", newXfEntries.join("") + "</cellXfs>");
+  }
+
+  // --- Step 4: Patch the worksheet XML to assign new highlight styles ---
+  sheetXml = sheetXml.replace(/<c r="([^"]+)" s="(\d+)"/g, (match, addr, styleIdx) => {
+    if (cellsToHighlight.has(addr)) {
+      const newStyle = styleToHighlightStyle.get(parseInt(styleIdx));
+      if (newStyle !== undefined) {
+        return `<c r="${addr}" s="${newStyle}"`;
+      }
+    }
+    return match;
+  });
+
+  zip.file(sheetFile, sheetXml);
+  zip.file("xl/styles.xml", stylesXml);
+  const patched = await zip.generateAsync({ type: "nodebuffer" });
+  return Buffer.from(patched);
+}
+
+/** @deprecated Use isEquipmentRow instead */
+function isGearboxRow(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  _oldLubricant: string
+): boolean {
+  return isEquipmentRow(worksheet, rowNumber, "gearbox");
+}
+
+async function annotateOriginalExcel(
+  buffer: Buffer,
+  changes: ChangeEntry[],
+  affectedEquipment?: string
+): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
+  // Phase 1: Use ExcelJS to FIND which cells to highlight (no fill setting)
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const changeLog: CellChange[] = [];
+  // Only include changes where the value ACTUALLY changes — skip entries where old === new
+  const replacementChanges = changes.filter(c =>
+    c.oldValue && c.oldValue.trim() !== "" && c.newValue &&
+    normForMatch(c.oldValue) !== normForMatch(c.newValue)
+  );
+
+  for (const worksheet of workbook.worksheets) {
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const cellStr = getCellStr(cell);
+        if (!cellStr) return;
+        if (!isMasterCell(cell)) return;
+        if (!isEquipmentRow(worksheet, rowNumber, affectedEquipment ?? "")) return;
+        for (const change of replacementChanges) {
+          if (matchesOldValue(cellStr, change.oldValue, change.unit)) {
+            const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
+            changeLog.push({
+              sheetName: worksheet.name, cellRef,
+              oldValue: cellStr, newValue: cellStr,
+              rowIndex: rowNumber, colIndex: colNumber,
+            });
+            break;
+          }
+        }
+      });
+    });
+  }
+
+  // Phase 2: Apply highlights directly to the ORIGINAL buffer via JSZip XML patching
+  const cellsToHighlight = new Map<string, "yellow" | "green">();
+  for (const entry of changeLog) {
+    cellsToHighlight.set(entry.cellRef, "yellow");
+  }
+  const highlightedBuffer = await applyHighlightsToExcelXml(buffer, cellsToHighlight);
+  return { buffer: highlightedBuffer, changeLog };
+}
+
+/**
+ * Produce the MODIFIED Excel: new values written, changed cells highlighted GREEN.
+ * This is the RIGHT panel in DraftReview — shows the updated document.
+ */
+async function modifyExcelGreen(
+  buffer: Buffer,
+  changes: ChangeEntry[],
+  affectedEquipment?: string
+): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
+  // Phase 1: Use ExcelJS to write new values (NO fill setting) and record which cells changed
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const changeLog: CellChange[] = [];
+  const replacementChanges = changes.filter(c =>
+    c.oldValue && c.oldValue.trim() !== "" && c.newValue &&
+    normForMatch(c.oldValue) !== normForMatch(c.newValue)
+  );
+
+  for (const worksheet of workbook.worksheets) {
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const cellStr = getCellStr(cell);
+        if (!cellStr) return;
+        if (!isMasterCell(cell)) return;
+        if (!isEquipmentRow(worksheet, rowNumber, affectedEquipment ?? "")) return;
+        for (const change of replacementChanges) {
+          if (matchesOldValue(cellStr, change.oldValue, change.unit)) {
+            const newVal = buildNewValue(
+              cell.value as string | number | boolean | Date | null,
+              change.oldValue, change.newValue, change.unit
+            );
+            const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
+            changeLog.push({
+              sheetName: worksheet.name, cellRef,
+              oldValue: cellStr, newValue: String(newVal),
+              rowIndex: rowNumber, colIndex: colNumber,
+            });
+            cell.value = newVal;
+            // DO NOT set fill here — ExcelJS fill propagation corrupts other cells
+            break;
+          }
+        }
+      });
+    });
+  }
+
+  // Write the new values to a buffer (no fills set)
+  const valueBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+  // Phase 2: Apply GREEN highlights directly to the value-updated buffer via JSZip XML patching
+  const cellsToHighlight = new Map<string, "yellow" | "green">();
+  for (const entry of changeLog) {
+    cellsToHighlight.set(entry.cellRef, "green");
+  }
+  const highlightedBuffer = await applyHighlightsToExcelXml(valueBuffer, cellsToHighlight);
+  return { buffer: highlightedBuffer, changeLog };
+}
+
+/**
+ * Produce the CLEAN MODIFIED Excel: new values written, NO highlight colours.
+ * This is the download version — looks like a normal document.
+ */
+async function modifyExcelClean(
+  buffer: Buffer,
+  changes: ChangeEntry[],
+  affectedEquipment?: string
+): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const replacementChanges = changes.filter(c =>
+    c.oldValue && c.oldValue.trim() !== "" && c.newValue &&
+    normForMatch(c.oldValue) !== normForMatch(c.newValue)
+  );
+
+  for (const worksheet of workbook.worksheets) {
+    worksheet.eachRow({ includeEmpty: false }, (_row, rowNumber) => {
+      _row.eachCell({ includeEmpty: false }, (cell) => {
+        const cellStr = getCellStr(cell);
+        if (!cellStr) return;
+        // Skip non-master cells of merged ranges
+        if (!isMasterCell(cell)) return;
+        // Always check the equipment row guard. isEquipmentRow returns false when
+        // equipmentName is empty, so no rows are modified when equipment is unspecified.
+        if (!isEquipmentRow(worksheet, rowNumber, affectedEquipment ?? "")) return;
+        for (const change of replacementChanges) {
+          if (matchesOldValue(cellStr, change.oldValue, change.unit)) {
+            const newVal = buildNewValue(
+              cell.value as string | number | boolean | Date | null,
+              change.oldValue, change.newValue, change.unit
+            );
+            cell.value = newVal;
+            // No fill change — preserve original cell colour
+            break;
+          }
+        }
+      });
+    });
+  }
+  const outBuffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(outBuffer);
+}
+
+/**
+ * @deprecated Use annotateOriginalExcel + modifyExcelGreen + modifyExcelClean instead.
+ * Kept for backward compatibility.
  */
 async function modifyExcel(
   buffer: Buffer,
   changes: ChangeEntry[]
 ): Promise<{ buffer: Buffer; changeLog: CellChange[] }> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as any);
-
-  const changeLog: CellChange[] = [];
-
-  // Separate changes into: (a) old-value replacements, (b) new-value-only additions
-  const replacementChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "" && c.newValue);
-  const additionChanges = changes.filter(c => (!c.oldValue || c.oldValue.trim() === "") && c.newValue);
-
-  // Track which addition changes have already been applied (by fieldName)
-  const appliedAdditions = new Set<string>();
-
-  for (const worksheet of workbook.worksheets) {
-    // Build a map of row labels: for each row, the first non-empty cell is the label
-    const rowLabels = new Map<number, string>();
-    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      const firstCell = row.getCell(1);
-      if (firstCell?.value) {
-        const v = firstCell.value;
-        const label = typeof v === "object" && v !== null && "richText" in v
-          ? (v as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("")
-          : String(v);
-        if (label.trim()) rowLabels.set(rowNumber, label.trim());
-      }
-    });
-
-    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-        const cellValue = cell.value;
-        if (cellValue === null || cellValue === undefined) return;
-
-        // Handle rich text cells
-        let cellStr: string;
-        if (typeof cellValue === "object" && "richText" in (cellValue as object)) {
-          cellStr = (cellValue as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("");
-        } else if (cellValue instanceof Date) {
-          cellStr = cellValue.toISOString();
-        } else {
-          cellStr = String(cellValue);
-        }
-
-        // --- Pass 1: Apply old-value replacement changes ---
-        for (const change of replacementChanges) {
-          if (matchesOldValue(cellStr, change.oldValue)) {
-            const newVal = buildNewValue(cellValue as string | number | boolean | Date | null, change.oldValue, change.newValue, change.unit);
-
-            const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
-            changeLog.push({
-              sheetName: worksheet.name,
-              cellRef,
-              oldValue: cellStr,
-              newValue: String(newVal),
-              rowIndex: rowNumber,
-              colIndex: colNumber,
-            });
-
-            cell.value = newVal;
-            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
-            cell.font = cell.font ? { ...cell.font, bold: true } : { bold: true };
-            break;
-          }
-        }
-
-        // --- Pass 2: Apply new-value-only addition changes ---
-        // Find the right cell by matching the row label to the fieldName.
-        // Only apply to value cells (col >= 2) to avoid overwriting labels.
-        if (colNumber >= 2) {
-          const rowLabel = rowLabels.get(rowNumber) ?? "";
-          for (const change of additionChanges) {
-            if (appliedAdditions.has(change.fieldName)) continue;
-            if (fieldNameMatchesLabel(change.fieldName, rowLabel)) {
-              // Only write if the cell is currently empty or has a placeholder
-              const isEmpty = !cellStr || cellStr.trim() === "" || cellStr === "-" || cellStr === "N/A";
-              if (isEmpty) {
-                const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
-                changeLog.push({
-                  sheetName: worksheet.name,
-                  cellRef,
-                  oldValue: cellStr || "(empty)",
-                  newValue: `${change.newValue}${change.unit ? " " + change.unit : ""}`,
-                  rowIndex: rowNumber,
-                  colIndex: colNumber,
-                });
-                cell.value = `${change.newValue}${change.unit ? " " + change.unit : ""}`;
-                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
-                cell.font = cell.font ? { ...cell.font, bold: true } : { bold: true };
-                appliedAdditions.add(change.fieldName);
-                break;
-              }
-            }
-          }
-        }
-      });
-    });
-  }
-
-  // Write back — ExcelJS preserves all original formatting
-  const outBuffer = await workbook.xlsx.writeBuffer();
-  return { buffer: Buffer.from(outBuffer), changeLog };
+  return modifyExcelGreen(buffer, changes);
 }
 
-/**
- * Parse pdftotext -bbox HTML output to get word bounding boxes per page.
- * Returns: Map<pageIndex, Array<{word, xMin, yMin, xMax, yMax, pageWidth, pageHeight}>>
- */
-function parseBboxHtml(html: string): Map<number, Array<{ word: string; xMin: number; yMin: number; xMax: number; yMax: number; pageWidth: number; pageHeight: number }>> {
-  const pages = new Map<number, Array<{ word: string; xMin: number; yMin: number; xMax: number; yMax: number; pageWidth: number; pageHeight: number }>>();
-  // Split by </page> to get individual page chunks (avoids dotAll regex flag)
-  const pageChunks = html.split("</page>");
-  for (let pageIdx = 0; pageIdx < pageChunks.length; pageIdx++) {
-    const chunk = pageChunks[pageIdx];
-    const headerMatch = /<page width="([\d.]+)" height="([\d.]+)">/.exec(chunk);
-    if (!headerMatch) continue;
-    const pageWidth = parseFloat(headerMatch[1]);
-    const pageHeight = parseFloat(headerMatch[2]);
-    const pageContent = chunk.substring(headerMatch.index + headerMatch[0].length);
-    const words: Array<{ word: string; xMin: number; yMin: number; xMax: number; yMax: number; pageWidth: number; pageHeight: number }> = [];
-    const wordRegex = /<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)<\/word>/g;
-    let wordMatch: RegExpExecArray | null;
-    while ((wordMatch = wordRegex.exec(pageContent)) !== null) {
-      words.push({
-        word: wordMatch[5].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
-        xMin: parseFloat(wordMatch[1]),
-        yMin: parseFloat(wordMatch[2]),
-        xMax: parseFloat(wordMatch[3]),
-        yMax: parseFloat(wordMatch[4]),
-        pageWidth,
-        pageHeight,
-      });
-    }
-    if (words.length > 0) {
-      pages.set(pageIdx, words);
-    }
-  }
-  return pages;
-}
 
 /**
- * Helper: find word bounding boxes for given search terms in a PDF.
- * Returns an array of match records with page index and coordinates.
+ * A text item from a PDF page with its bounding box.
  */
-type WordEntry = { word: string; xMin: number; yMin: number; xMax: number; yMax: number; pageWidth: number; pageHeight: number };
+type TextItem = { str: string; xMin: number; yMin: number; xMax: number; yMax: number };
 
-function findTermsInPageWords(
-  pageWords: Map<number, WordEntry[]>,
+/**
+ * A line of text on a PDF page: items grouped by Y coordinate, sorted by X.
+ * The `text` field is the concatenated string; `charMap` maps each character
+ * index in `text` back to approximate X coordinates for bounding box extraction.
+ */
+type PageLine = {
+  text: string;
+  yMin: number;
+  yMax: number;
+  charMap: Array<{ x: number; w: number }>; // one entry per char in `text`
+};
+
+/**
+ * Structured page data: lines of text with character-level position mapping.
+ */
+type PageData = {
+  lines: PageLine[];
+  pageWidth: number;
+  pageHeight: number;
+};
+
+/**
+ * Helper: find search terms in page data using line-based concatenation.
+ * This correctly handles PDFs where text items are fragmented across runs
+ * (e.g., "155gm" split as "1" + "55" + "gm" in separate text items).
+ *
+ * Returns an array of match records with page index and bounding box coordinates.
+ */
+function findTermsInPages(
+  pageData: Map<number, PageData>,
   searchTerms: string[]
 ): Array<{ pageIdx: number; wi: number; xMin: number; yMin: number; xMax: number; yMax: number; pageH: number; term: string }> {
   const matches: Array<{ pageIdx: number; wi: number; xMin: number; yMin: number; xMax: number; yMax: number; pageH: number; term: string }> = [];
-  for (const [pageIdx, words] of Array.from(pageWords.entries())) {
+
+  for (const [pageIdx, data] of Array.from(pageData.entries())) {
     for (const term of searchTerms) {
-      const termWords = term.trim().split(/\s+/);
-      for (let wi = 0; wi <= words.length - termWords.length; wi++) {
-        const matchWords = words.slice(wi, wi + termWords.length);
-        const matchText = matchWords.map(w => w.word).join(" ");
-        if (matchText.toLowerCase() === term.toLowerCase() ||
-            matchText.toLowerCase().replace(/[,]/g, "") === term.toLowerCase().replace(/[,]/g, "")) {
-          const xMin = Math.min(...matchWords.map(w => w.xMin));
-          const yMin = Math.min(...matchWords.map(w => w.yMin));
-          const xMax = Math.max(...matchWords.map(w => w.xMax));
-          const yMax = Math.max(...matchWords.map(w => w.yMax));
-          // Get page height from the first word's pageHeight
-          const pageH = matchWords[0]?.pageHeight ?? 842;
-          matches.push({ pageIdx, wi, xMin, yMin, xMax, yMax, pageH, term });
-          break; // one match per term per page
-        }
+      const termLower = term.toLowerCase();
+      let found = false;
+      for (const line of data.lines) {
+        const lineLower = line.text.toLowerCase();
+        const idx = lineLower.indexOf(termLower);
+        if (idx === -1) continue;
+
+        // Map character range back to X coordinates
+        const startChar = line.charMap[idx];
+        const endChar = line.charMap[idx + term.length - 1];
+        if (!startChar || !endChar) continue;
+
+        const xMin = startChar.x;
+        const xMax = endChar.x + endChar.w;
+
+        matches.push({
+          pageIdx,
+          wi: idx,
+          xMin,
+          yMin: line.yMin,
+          xMax,
+          yMax: line.yMax,
+          pageH: data.pageHeight,
+          term,
+        });
+        found = true;
+        break; // one match per term per page
       }
+      if (found) break; // first matching term wins (compound terms checked first)
     }
   }
   return matches;
 }
 
 /**
- * Extract pdftotext -bbox page words from a PDF buffer.
- * Returns null on failure.
+ * Extract structured page data from a PDF buffer using pdf-parse v2 (pure JS).
+ * Groups text items into lines, concatenates them, and builds a character-level
+ * position map for accurate bounding box extraction during search.
+ *
+ * This approach correctly handles PDFs where text items are fragmented across
+ * multiple runs (common in complex PDFs with mixed fonts, colors, or formatting).
  */
-function extractPageWords(buffer: Buffer): Map<number, WordEntry[]> | null {
-  const tmpPdf = join(tmpdir(), `pdf-bbox-${randomSuffix()}.pdf`);
-  const tmpHtml = join(tmpdir(), `pdf-bbox-${randomSuffix()}.html`);
+async function extractPageData(buffer: Buffer): Promise<Map<number, PageData> | null> {
   try {
-    writeFileSync(tmpPdf, buffer);
-    execSync(`pdftotext -bbox "${tmpPdf}" "${tmpHtml}"`, { timeout: 30000 });
-    const bboxHtml = readFileSync(tmpHtml, "utf8");
-    return parseBboxHtml(bboxHtml);
+    const parser = new PDFParse({ data: Buffer.from(buffer) });
+    await parser.getText({ partial: [1] });
+    const doc = (parser as any).doc;
+    if (!doc) {
+      await parser.destroy();
+      return null;
+    }
+    const numPages = doc.numPages;
+    const pages = new Map<number, PageData>();
+
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await doc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1 });
+      const textContent = await page.getTextContent({ includeMarkedContent: false });
+
+      // Collect all text items with their bounding boxes
+      const items: TextItem[] = [];
+      for (const item of textContent.items) {
+        if (!item.str) continue;
+        const x = item.transform[4];
+        const y = item.transform[5];
+        const fontSize = Math.abs(item.transform[3]) || item.height || 10;
+        const width = item.width || (item.str.length * fontSize * 0.5);
+
+        items.push({
+          str: item.str,
+          xMin: x,
+          // Convert from PDF coords (origin bottom-left) to top-left coords
+          yMin: viewport.height - y - fontSize,
+          xMax: x + width,
+          yMax: viewport.height - y,
+        });
+      }
+
+      // Group items into lines by Y coordinate (tolerance: half of typical font size)
+      const lineGroups: Array<{ yCenter: number; items: TextItem[] }> = [];
+      for (const item of items) {
+        const yCenter = (item.yMin + item.yMax) / 2;
+        const lineHeight = item.yMax - item.yMin;
+        const tolerance = lineHeight * 0.5 || 5;
+        let foundGroup = false;
+        for (const group of lineGroups) {
+          if (Math.abs(group.yCenter - yCenter) < tolerance) {
+            group.items.push(item);
+            // Update group center as running average
+            group.yCenter = (group.yCenter * (group.items.length - 1) + yCenter) / group.items.length;
+            foundGroup = true;
+            break;
+          }
+        }
+        if (!foundGroup) {
+          lineGroups.push({ yCenter, items: [item] });
+        }
+      }
+
+      // Sort groups top-to-bottom, items within each group left-to-right
+      lineGroups.sort((a, b) => a.yCenter - b.yCenter);
+
+      const lines: PageLine[] = [];
+      for (const group of lineGroups) {
+        group.items.sort((a, b) => a.xMin - b.xMin);
+
+        // Concatenate items into a single line string with character position mapping
+        let text = "";
+        const charMap: Array<{ x: number; w: number }> = [];
+        let yMin = Infinity;
+        let yMax = -Infinity;
+
+        for (let i = 0; i < group.items.length; i++) {
+          const item = group.items[i];
+          yMin = Math.min(yMin, item.yMin);
+          yMax = Math.max(yMax, item.yMax);
+
+          // Determine if we need to insert a space between this item and the previous
+          if (i > 0) {
+            const prevItem = group.items[i - 1];
+            const gap = item.xMin - prevItem.xMax;
+            const avgCharWidth = (prevItem.xMax - prevItem.xMin) / Math.max(1, prevItem.str.length);
+            // Insert space if gap is larger than ~30% of average char width
+            if (gap > avgCharWidth * 0.3) {
+              const spaceX = prevItem.xMax;
+              const spaceW = gap;
+              text += " ";
+              charMap.push({ x: spaceX, w: spaceW });
+            }
+            // If items overlap or are very close, concatenate directly (no space)
+          }
+
+          // Add each character of this item to the map
+          const itemCharWidth = (item.xMax - item.xMin) / Math.max(1, item.str.length);
+          for (let ci = 0; ci < item.str.length; ci++) {
+            text += item.str[ci];
+            charMap.push({
+              x: item.xMin + ci * itemCharWidth,
+              w: itemCharWidth,
+            });
+          }
+        }
+
+        if (text.trim()) {
+          lines.push({ text, yMin, yMax, charMap });
+        }
+      }
+
+      if (lines.length > 0) {
+        pages.set(pageNum - 1, { lines, pageWidth: viewport.width, pageHeight: viewport.height });
+      }
+      page.cleanup();
+    }
+
+    await parser.destroy();
+    return pages;
   } catch (e) {
-    console.error("[extractPageWords] Failed:", e);
+    console.error("[extractPageData] Failed:", e);
     return null;
-  } finally {
-    if (existsSync(tmpPdf)) unlinkSync(tmpPdf);
-    if (existsSync(tmpHtml)) unlinkSync(tmpHtml);
   }
 }
 
@@ -363,8 +817,8 @@ async function annotateOriginalPdf(
   const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWords = extractPageWords(buffer);
-  if (!pageWords) return buffer;
+  const pageData = await extractPageData(buffer);
+  if (!pageData) return buffer;
 
   const filteredChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "");
   for (const change of filteredChanges) {
@@ -375,7 +829,7 @@ async function annotateOriginalPdf(
       searchTerms.push(`${change.oldValue} ${change.unit}`);  // "155 g"
     }
     searchTerms.push(change.oldValue);  // "155" (fallback)
-    const matches = findTermsInPageWords(pageWords, searchTerms);
+    const matches = findTermsInPages(pageData, searchTerms);
     for (const m of matches) {
       const page = pdfDoc.getPage(m.pageIdx);
       const { height: pageH } = page.getSize();
@@ -461,8 +915,8 @@ async function modifyPdf(
 
   const changeLog: CellChange[] = [];
 
-  const pageWords = extractPageWords(buffer);
-  if (pageWords) {
+  const pageData = await extractPageData(buffer);
+  if (pageData) {
     // For each change, find all occurrences of oldValue across all pages
     const filteredChanges = changes.filter(c => c.oldValue && c.oldValue.trim() !== "" && c.newValue);
     for (const change of filteredChanges) {
@@ -474,7 +928,7 @@ async function modifyPdf(
       }
       searchTerms.push(change.oldValue);  // "155" (fallback)
 
-      const matches = findTermsInPageWords(pageWords, searchTerms);
+      const matches = findTermsInPages(pageData, searchTerms);
       for (const m of matches) {
         // ── ANNOTATED VIEW (right panel): green highlight + arrow ──────────
         const page = pdfDoc.getPage(m.pageIdx);
@@ -485,7 +939,9 @@ async function modifyPdf(
         const boxW = m.xMax - m.xMin;
 
         // Draw the new value text in green, replacing the old
-        const newLabel = sanitizeForPdf(`${change.newValue}${change.unit ? " " + change.unit : ""}`);
+        // Only append unit if newValue doesn't already end with it (prevents "170gm gm")
+        const pdfUnitSuffix = change.unit && !change.newValue.toLowerCase().endsWith(change.unit.toLowerCase()) ? ` ${change.unit}` : "";
+        const newLabel = sanitizeForPdf(`${change.newValue}${pdfUnitSuffix}`);
         const annotFontSize = Math.max(6, Math.min(10, boxH * 0.9));
 
         // ── ANNOTATED VIEW (right panel): white cover + green highlight + new value ──
@@ -548,11 +1004,13 @@ async function modifyPdf(
           color: rgb(0.1, 0.1, 0.1),
         });
 
+        const clOldSuffix = change.unit && !change.oldValue.toLowerCase().endsWith(change.unit.toLowerCase()) ? ` ${change.unit}` : "";
+        const clNewSuffix = change.unit && !change.newValue.toLowerCase().endsWith(change.unit.toLowerCase()) ? ` ${change.unit}` : "";
         changeLog.push({
           sheetName: `Page ${m.pageIdx + 1}`,
           cellRef: `(${Math.round(m.xMin)}, ${Math.round(m.yMin)})`,
-          oldValue: `${change.fieldName}: ${change.oldValue}${change.unit ? " " + change.unit : ""}`,
-          newValue: `${change.fieldName}: ${change.newValue}${change.unit ? " " + change.unit : ""}`,
+          oldValue: `${change.fieldName}: ${change.oldValue}${clOldSuffix}`,
+          newValue: `${change.fieldName}: ${change.newValue}${clNewSuffix}`,
           rowIndex: m.pageIdx,
           colIndex: m.wi,
         });
@@ -623,8 +1081,10 @@ async function modifyPdf(
     summaryPage.drawRectangle({ x: margin, y: y - 4, width: summaryPage.getWidth() - 2 * margin, height: 16, color: rowBg });
 
     const label = sanitizeForPdf(c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "..." : c.fieldName);
-    const oldVal = sanitizeForPdf(`${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`).substring(0, 22);
-    const newVal = sanitizeForPdf(`${c.newValue}${c.unit ? " " + c.unit : ""}`).substring(0, 22);
+    const sumOldSuffix = c.unit && c.oldValue && !c.oldValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? ` ${c.unit}` : "";
+    const sumNewSuffix = c.unit && !c.newValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? ` ${c.unit}` : "";
+    const oldVal = sanitizeForPdf(`${c.oldValue ?? "(new)"}${sumOldSuffix}`).substring(0, 22);
+    const newVal = sanitizeForPdf(`${c.newValue}${sumNewSuffix}`).substring(0, 22);
 
     summaryPage.drawText(label, { x: col1 + 4, y, size: 8, font: helvetica, color: rgb(0.15, 0.15, 0.15) });
     summaryPage.drawText(oldVal, { x: col2 + 4, y, size: 8, font: helvetica, color: rgb(0.65, 0.1, 0.1) });
@@ -646,8 +1106,10 @@ async function modifyPdf(
   for (let i = 0; i < allChanges.length && cy > margin + 40; i++) {
     const c = allChanges[i];
     const label = sanitizeForPdf(c.fieldName.length > 26 ? c.fieldName.substring(0, 24) + "..." : c.fieldName);
-    const oldVal = sanitizeForPdf(`${c.oldValue ?? "(new)"}${c.unit ? " " + c.unit : ""}`);
-    const newVal = sanitizeForPdf(`${c.newValue}${c.unit ? " " + c.unit : ""}`);
+    const cleanOldSuffix = c.unit && c.oldValue && !c.oldValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? ` ${c.unit}` : "";
+    const cleanNewSuffix = c.unit && !c.newValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? ` ${c.unit}` : "";
+    const oldVal = sanitizeForPdf(`${c.oldValue ?? "(new)"}${cleanOldSuffix}`);
+    const newVal = sanitizeForPdf(`${c.newValue}${cleanNewSuffix}`);
     cleanSummaryPage.drawText(`${label}: ${oldVal} -> ${newVal}`, { x: margin, y: cy, size: 9, font: cleanHelvetica2, color: rgb(0.15, 0.15, 0.15) });
     cy -= 16;
   }
@@ -658,47 +1120,258 @@ async function modifyPdf(
 }
 
 /**
- * Run the Python wordModifier.py script on a buffer.
+ * Pure JS Word document modifier — replaces the Python wordModifier.py script.
+ * Uses JSZip to open the .docx, manipulates the XML directly to find/replace text
+ * in runs while preserving all original formatting.
+ *
  * mode: 'annotate_original' | 'modify_green' | 'modify_clean'
  * Returns the output buffer, or null on failure.
  */
-function runWordModifierPy(
+async function runWordModifierJs(
   inputBuffer: Buffer,
   changes: ChangeEntry[],
   mode: "annotate_original" | "modify_green" | "modify_clean"
-): Buffer | null {
-  const tmpIn = join(tmpdir(), `word-in-${randomSuffix()}.docx`);
-  const tmpOut = join(tmpdir(), `word-out-${randomSuffix()}.docx`);
+): Promise<Buffer | null> {
   try {
-    writeFileSync(tmpIn, inputBuffer);
-    const changesJson = JSON.stringify(
-      changes.map(c => ({ fieldName: c.fieldName, oldValue: c.oldValue ?? "", newValue: c.newValue ?? "", unit: c.unit ?? "" }))
-    );
-    const scriptPath = join(__dirname, "wordModifier.py");
-    const result = execSync(
-      `python3.11 "${scriptPath}" ${mode} "${tmpIn}" "${tmpOut}" '${changesJson.replace(/'/g, "'\\''")}' `,
-      { timeout: 60000, encoding: "utf8" }
-    );
-    console.log(`[WordModifier] ${mode} result: ${result.trim()}`);
-    if (existsSync(tmpOut)) {
-      return readFileSync(tmpOut);
+    const zip = await JSZip.loadAsync(inputBuffer);
+
+    // Process all document parts that can contain text
+    const xmlParts = [
+      "word/document.xml",
+      "word/header1.xml", "word/header2.xml", "word/header3.xml",
+      "word/footer1.xml", "word/footer2.xml", "word/footer3.xml",
+    ];
+
+    let totalChanges = 0;
+
+    for (const partPath of xmlParts) {
+      const file = zip.file(partPath);
+      if (!file) continue;
+      let xml = await file.async("string");
+      const result = applyChangesToDocXml(xml, changes, mode);
+      if (result.changesApplied > 0) {
+        zip.file(partPath, result.xml);
+        totalChanges += result.changesApplied;
+      }
     }
+
+    console.log(`[WordModifierJS] ${mode}: ${totalChanges} changes applied`);
+    const outputBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    return outputBuffer;
+  } catch (e) {
+    console.error(`[WordModifierJS] ${mode} failed:`, e);
     return null;
-  } catch (e: unknown) {
-    // Exit code 2 means no matches found — still return the output file if it exists
-    if (existsSync(tmpOut)) {
-      return readFileSync(tmpOut);
-    }
-    console.error(`[WordModifier] ${mode} failed:`, e);
-    return null;
-  } finally {
-    if (existsSync(tmpIn)) unlinkSync(tmpIn);
-    if (existsSync(tmpOut)) unlinkSync(tmpOut);
   }
 }
 
 /**
- * Modify a Word (.docx) document using python-docx for TRUE in-place modification.
+ * Apply text changes to a Word XML part (document.xml, header, footer).
+ * Searches for old values in paragraph text, replaces them, and optionally adds highlights.
+ *
+ * Strategy:
+ * 1. Find all <w:p> elements (paragraphs)
+ * 2. For each paragraph, concatenate all <w:t> text to get the full paragraph text
+ * 3. Search for each change's old value (compound terms first)
+ * 4. When found, rebuild the runs to split at match boundaries
+ * 5. Apply highlight/replacement to the matched segment
+ */
+function applyChangesToDocXml(
+  xml: string,
+  changes: ChangeEntry[],
+  mode: "annotate_original" | "modify_green" | "modify_clean"
+): { xml: string; changesApplied: number } {
+  let changesApplied = 0;
+
+  // Process each paragraph
+  // Match <w:p ...>...</w:p> or <w:p/> (self-closing)
+  const pRegex = /<w:p[\s>][\s\S]*?<\/w:p>/g;
+  
+  xml = xml.replace(pRegex, (pXml) => {
+    // Extract all runs from this paragraph
+    const runRegex = /<w:r[\s>][\s\S]*?<\/w:r>/g;
+    const runs: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = runRegex.exec(pXml)) !== null) {
+      runs.push(match[0]);
+    }
+    if (runs.length === 0) return pXml;
+
+    // Get full text from all runs
+    const runTexts = runs.map(r => {
+      const tMatch = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g;
+      let text = "";
+      let m: RegExpExecArray | null;
+      while ((m = tMatch.exec(r)) !== null) {
+        text += m[1];
+      }
+      return text;
+    });
+    const fullText = runTexts.join("");
+    if (!fullText.trim()) return pXml;
+
+    // Try each change
+    for (const change of changes) {
+      const oldVal = (change.oldValue ?? "").trim();
+      const newVal = (change.newValue ?? "").trim();
+      const unit = (change.unit ?? "").trim();
+      if (!oldVal || !newVal) continue;
+
+      // Build search terms in priority order (longest compound first)
+      const searchTerms: string[] = [];
+      if (unit) {
+        searchTerms.push(`${oldVal}${unit}`);
+        searchTerms.push(`${oldVal} ${unit}`);
+        for (let prefixLen = unit.length - 1; prefixLen > 0; prefixLen--) {
+          const prefix = unit.substring(0, prefixLen);
+          searchTerms.push(`${oldVal}${prefix}`);
+          searchTerms.push(`${oldVal} ${prefix}`);
+        }
+      }
+      searchTerms.push(oldVal);
+
+      // Find a match in the full text
+      let matchStart = -1;
+      let matchEnd = -1;
+      let matchedTerm = "";
+      for (const term of searchTerms) {
+        const idx = fullText.toLowerCase().indexOf(term.toLowerCase());
+        if (idx !== -1) {
+          matchStart = idx;
+          matchEnd = idx + term.length;
+          matchedTerm = term;
+          break;
+        }
+      }
+      if (matchStart === -1) continue;
+
+      // Determine replacement text
+      let replacementText: string;
+      if (mode === "annotate_original") {
+        replacementText = fullText.substring(matchStart, matchEnd); // keep original text
+      } else {
+        if (unit && !newVal.toLowerCase().endsWith(unit.toLowerCase())) {
+          replacementText = `${newVal} ${unit}`;
+        } else {
+          replacementText = newVal;
+        }
+      }
+
+      // Determine highlight color
+      let highlightColor: string | null = null;
+      if (mode === "annotate_original") highlightColor = "yellow";
+      else if (mode === "modify_green") highlightColor = "green";
+
+      // Rebuild runs with the match split
+      // Build character-to-run map
+      const charToRun: number[] = [];
+      for (let ri = 0; ri < runTexts.length; ri++) {
+        for (let ci = 0; ci < runTexts[ri].length; ci++) {
+          charToRun.push(ri);
+        }
+      }
+
+      // Build new runs
+      const newRuns: string[] = [];
+      let charIdx = 0;
+      for (let ri = 0; ri < runs.length; ri++) {
+        const runText = runTexts[ri];
+        const runStart = charIdx;
+        const runEnd = charIdx + runText.length;
+
+        // Determine which segments of this run fall in before/matched/after
+        const segments: Array<{ text: string; segment: "before" | "matched" | "after" }> = [];
+
+        const beforeEnd = Math.min(runEnd, matchStart);
+        if (beforeEnd > runStart) {
+          segments.push({ text: fullText.substring(runStart, beforeEnd), segment: "before" });
+        }
+
+        const matchedStart = Math.max(runStart, matchStart);
+        const matchedEnd = Math.min(runEnd, matchEnd);
+        if (matchedStart < matchedEnd) {
+          segments.push({ text: fullText.substring(matchedStart, matchedEnd), segment: "matched" });
+        }
+
+        const afterStart = Math.max(runStart, matchEnd);
+        if (afterStart < runEnd) {
+          segments.push({ text: fullText.substring(afterStart, runEnd), segment: "after" });
+        }
+
+        // Get the run's rPr (formatting properties)
+        const rPrMatch = /<w:rPr>[\s\S]*?<\/w:rPr>/.exec(runs[ri]);
+        const rPr = rPrMatch ? rPrMatch[0] : "";
+
+        for (const seg of segments) {
+          if (!seg.text && seg.segment !== "matched") continue;
+
+          let segText = seg.text;
+          let segRPr = rPr;
+
+          if (seg.segment === "matched") {
+            // Use replacement text (only for the first run that contains matched text)
+            if (segments[0]?.segment === "matched" || !segments.some(s => s.segment === "matched" && s !== seg)) {
+              segText = replacementText;
+              // Clear replacement for subsequent matched segments
+              replacementText = "";
+            } else {
+              segText = ""; // subsequent matched runs get empty text
+            }
+
+            // Add highlight to rPr
+            if (highlightColor && segText) {
+              if (segRPr) {
+                // Remove existing highlight
+                segRPr = segRPr.replace(/<w:highlight[^/]*\/>/g, "");
+                segRPr = segRPr.replace(/<w:highlight[^>]*>[\s\S]*?<\/w:highlight>/g, "");
+                // Add new highlight before closing </w:rPr>
+                segRPr = segRPr.replace("</w:rPr>", `<w:highlight w:val="${highlightColor}"/></w:rPr>`);
+              } else {
+                segRPr = `<w:rPr><w:highlight w:val="${highlightColor}"/></w:rPr>`;
+              }
+            }
+          }
+
+          if (segText === "" && seg.segment !== "matched") continue;
+
+          // Build the run XML
+          const spaceAttr = (segText.startsWith(" ") || segText.endsWith(" ")) ? ' xml:space="preserve"' : "";
+          const escapedText = segText
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+          newRuns.push(`<w:r>${segRPr}<w:t${spaceAttr}>${escapedText}</w:t></w:r>`);
+        }
+
+        charIdx = runEnd;
+      }
+
+      // Replace runs in the paragraph XML
+      // Remove all existing <w:r>...</w:r> and insert new ones
+      let newPXml = pXml.replace(/<w:r[\s>][\s\S]*?<\/w:r>/g, "");
+      // Find insertion point (after <w:pPr>...</w:pPr> if present, or at start of paragraph content)
+      const pPrEnd = newPXml.indexOf("</w:pPr>");
+      if (pPrEnd !== -1) {
+        const insertAt = pPrEnd + "</w:pPr>".length;
+        newPXml = newPXml.substring(0, insertAt) + newRuns.join("") + newPXml.substring(insertAt);
+      } else {
+        // Insert after the opening <w:p> or <w:p ...> tag
+        const pOpenEnd = newPXml.indexOf(">") + 1;
+        newPXml = newPXml.substring(0, pOpenEnd) + newRuns.join("") + newPXml.substring(pOpenEnd);
+      }
+
+      changesApplied++;
+      pXml = newPXml;
+      break; // one change per paragraph (same as Python)
+    }
+
+    return pXml;
+  });
+
+  return { xml, changesApplied };
+}
+
+/**
+ * Modify a Word (.docx) document using pure JS (JSZip XML manipulation).
  * Preserves all original formatting, tables, images, headers/footers.
  * Produces three variants: annotated original (yellow), modified view (green), clean download.
  */
@@ -709,9 +1382,9 @@ async function modifyWord(
 ): Promise<{ buffer: Buffer; annotatedOriginalBuffer: Buffer | null; cleanBuffer: Buffer | null; changeLog: CellChange[] }> {
   // Run all three variants in parallel
   const [greenBuffer, annotatedBuffer, cleanBuffer] = await Promise.all([
-    Promise.resolve(runWordModifierPy(buffer, changes, "modify_green")),
-    Promise.resolve(runWordModifierPy(buffer, changes, "annotate_original")),
-    Promise.resolve(runWordModifierPy(buffer, changes, "modify_clean")),
+    runWordModifierJs(buffer, changes, "modify_green"),
+    runWordModifierJs(buffer, changes, "annotate_original"),
+    runWordModifierJs(buffer, changes, "modify_clean"),
   ]);
 
   // Build change log from changes (Python script doesn't return structured log)
@@ -720,8 +1393,8 @@ async function modifyWord(
     .map((c, i) => ({
       sheetName: "Word Document",
       cellRef: `Change ${i + 1}`,
-      oldValue: `${c.fieldName}: ${c.oldValue}${c.unit ? " " + c.unit : ""}`,
-      newValue: `${c.fieldName}: ${c.newValue}${c.unit ? " " + c.unit : ""}`,
+      oldValue: `${c.fieldName}: ${c.oldValue}${c.unit && !c.oldValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? " " + c.unit : ""}`,
+      newValue: `${c.fieldName}: ${c.newValue}${c.unit && !c.newValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? " " + c.unit : ""}`,
       rowIndex: i,
       colIndex: 0,
     }));
@@ -782,15 +1455,10 @@ export async function extractDocumentContent(params: {
 
   if (isPdf) {
     try {
-      const tmpFile = join(tmpdir(), `pdfmod-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
-      writeFileSync(tmpFile, buffer);
-      let text = "";
-      try {
-        text = execSync(`pdftotext -layout "${tmpFile}" -`, { maxBuffer: 10 * 1024 * 1024 }).toString();
-      } finally {
-        if (existsSync(tmpFile)) unlinkSync(tmpFile);
-      }
-      return `PDF DOCUMENT: ${fileName}\n\n${text.substring(0, 10000)}`;
+      const parser = new PDFParse({ data: Buffer.from(buffer) });
+      const result = await parser.getText();
+      await parser.destroy();
+      return `PDF DOCUMENT: ${fileName}\n\n${result.text.substring(0, 10000)}`;
     } catch (e) {
       return `[Could not extract PDF content: ${e}]`;
     }
@@ -824,8 +1492,9 @@ export async function modifyDocument(params: {
   changes: ChangeEntry[];
   documentName: string;
   originalFileKey: string;
+  affectedEquipment?: string;
 }): Promise<ModificationResult> {
-  const { fileUrl, fileName, mimeType, changes, documentName, originalFileKey } = params;
+  const { fileUrl, fileName, mimeType, changes, documentName, originalFileKey, affectedEquipment } = params;
 
   if (!changes || changes.length === 0) {
     throw new Error("No changes provided to modifyDocument");
@@ -859,9 +1528,19 @@ export async function modifyDocument(params: {
   let cleanModifiedBuffer: Buffer | null = null;
 
   if (isExcel) {
-    const result = await modifyExcel(originalBuffer, changes);
-    modifiedBuffer = result.buffer;
-    changeLog = result.changeLog;
+    // Produce three variants in parallel:
+    // 1. annotatedOriginalBuffer — original values, YELLOW highlights on matched cells (left panel)
+    // 2. modifiedBuffer — new values written, GREEN highlights on changed cells (right panel)
+    // 3. cleanModifiedBuffer — new values written, no highlight colours (download)
+    const [annotatedResult, greenResult, cleanBuf] = await Promise.all([
+      annotateOriginalExcel(originalBuffer, changes, affectedEquipment),
+      modifyExcelGreen(originalBuffer, changes, affectedEquipment),
+      modifyExcelClean(originalBuffer, changes, affectedEquipment),
+    ]);
+    annotatedOriginalBuffer = annotatedResult.buffer;
+    modifiedBuffer = greenResult.buffer;
+    changeLog = greenResult.changeLog;
+    cleanModifiedBuffer = cleanBuf;
     outputMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     outputExtension = "xlsx";
   } else if (isPdf) {
@@ -896,8 +1575,8 @@ export async function modifyDocument(params: {
       .map((c, i) => ({
         sheetName: "Document",
         cellRef: `Change ${i + 1}`,
-        oldValue: `${c.fieldName}: ${c.oldValue}${c.unit ? " " + c.unit : ""}`,
-        newValue: `${c.fieldName}: ${c.newValue}${c.unit ? " " + c.unit : ""}`,
+        oldValue: `${c.fieldName}: ${c.oldValue}${c.unit && !c.oldValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? " " + c.unit : ""}`,
+        newValue: `${c.fieldName}: ${c.newValue}${c.unit && !c.newValue.toLowerCase().endsWith(c.unit.toLowerCase()) ? " " + c.unit : ""}`,
         rowIndex: i,
         colIndex: 0,
       }));

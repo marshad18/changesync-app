@@ -67,6 +67,10 @@ vi.mock("./db", () => ({
   updateDraftStatus: vi.fn().mockResolvedValue(undefined),
   updateDraftContent: vi.fn().mockResolvedValue(undefined),
   updateDraftModifiedFile: vi.fn().mockResolvedValue(undefined),
+  getDraftByImpactAnalysisId: vi.fn().mockResolvedValue(undefined),
+  getDraftByApprovalToken: vi.fn().mockResolvedValue(undefined),
+  getAppSetting: vi.fn().mockResolvedValue("gemini-2.5-flash"),
+  setAppSetting: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./documentModifier", () => ({

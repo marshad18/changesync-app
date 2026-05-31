@@ -1,0 +1,1 @@
+ALTER TABLE `changeEvents` ADD `manualDiff` text;

@@ -1,6 +1,6 @@
 import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, appSettings } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -52,12 +52,15 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       values.lastSignedIn = user.lastSignedIn;
       updateSet.lastSignedIn = user.lastSignedIn;
     }
+    // All users who sign in via the Manus OAuth gate get admin role automatically.
+    // The site is private (Manus gate protected), so only invited users reach it.
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else {
       values.role = 'admin';
-      updateSet.role = 'admin';
+      // Only set role on INSERT (first sign-in), not on subsequent sign-ins
+      // so manually-set roles are preserved
     }
 
     if (!values.lastSignedIn) {
@@ -201,6 +204,11 @@ export async function updateChangeEventStatus(id: number, status: "draft"|"analy
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(changeEvents).set({ status }).where(eq(changeEvents.id, id));
+}
+export async function updateChangeEventManualDiff(id: number, manualDiff: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(changeEvents).set({ manualDiff }).where(eq(changeEvents.id, id));
 }
 
 // ─── Change Assets ────────────────────────────────────────────────────────────
@@ -348,4 +356,53 @@ export async function getDraftByImpactAnalysisId(impactAnalysisId: number) {
   if (!db) return undefined;
   const result = await db.select().from(documentDrafts).where(eq(documentDrafts.impactAnalysisId, impactAnalysisId)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+// ─── App Settings ─────────────────────────────────────────────────────────────
+
+export async function getAppSetting(key: string, defaultValue: string): Promise<string> {
+  const db = await getDb();
+  if (!db) return defaultValue;
+  const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+  return result.length > 0 ? result[0].value : defaultValue;
+}
+
+export async function setAppSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(appSettings).values({ key, value })
+    .onDuplicateKeyUpdate({ set: { value } });
+}
+
+// ─── Document Versions ────────────────────────────────────────────────────────
+
+import { documentVersions, InsertDocumentVersion } from "../drizzle/schema";
+
+export async function createDocumentVersion(data: InsertDocumentVersion) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(documentVersions).values(data);
+  return result[0];
+}
+
+export async function getDocumentVersions(documentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(documentVersions)
+    .where(eq(documentVersions.documentId, documentId))
+    .orderBy(desc(documentVersions.versionNumber));
+}
+
+export async function getLatestVersionNumber(documentId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db
+    .select({ versionNumber: documentVersions.versionNumber })
+    .from(documentVersions)
+    .where(eq(documentVersions.documentId, documentId))
+    .orderBy(desc(documentVersions.versionNumber))
+    .limit(1);
+  return result.length > 0 ? result[0].versionNumber : 0;
 }

@@ -9,8 +9,7 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function registerOAuthRoutes(app: Express) {
-  app.get("/api/oauth/callback", async (req: Request, res: Response) => {
+async function handleOAuthCallback(req: Request, res: Response) {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
 
@@ -37,7 +36,7 @@ export function registerOAuthRoutes(app: Express) {
       });
 
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
+        name: userInfo.name || userInfo.email || "User",
         expiresInMs: ONE_YEAR_MS,
       });
 
@@ -49,5 +48,10 @@ export function registerOAuthRoutes(app: Express) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
     }
-  });
+}
+
+export function registerOAuthRoutes(app: Express) {
+  // Handle both /api/oauth/callback (internal) and /manus-oauth/callback (Manus platform gate)
+  app.get("/api/oauth/callback", handleOAuthCallback);
+  app.get("/manus-oauth/callback", handleOAuthCallback);
 }

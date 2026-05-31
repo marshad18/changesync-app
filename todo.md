@@ -305,3 +305,229 @@
 - [x] Approver page: fetch draft data including annotatedOriginalUrl and modifiedFileUrl, render both iframes side by side
 - [x] Approver page: approve/reject/notes form rendered below the split panel on the same page
 - [x] Make the entire annotation/replacement logic weight-agnostic (driven by skuChanges oldValue/newValue, compound-term priority for all units)
+
+## LLM Picker (Apr 23 2026)
+- [x] DB: add appSettings table (key TEXT PK, value TEXT) for storing global config like selected LLM model
+- [x] Run pnpm db:push to migrate schema
+- [x] Backend: add settings.getModel procedure — returns current model name, defaults to gemini-2.5-flash
+- [x] Backend: add settings.setModel procedure (protected) — updates model in appSettings table
+- [x] Add optional model field to InvokeParams in llm.ts
+- [x] Update all 4 invokeLLM calls in routers.ts to read model from DB settings instead of hardcoding
+- [x] Frontend: build LLMSettings.tsx page with 6 model cards (speed/quality dot indicators, strengths, provider)
+- [x] Available models: gemini-2.5-flash (default), gemini-2.5-pro, gemini-2.0-flash, gemini-2.0-flash-lite, claude-sonnet-4-5, claude-opus-4-5
+- [x] Show currently active model with green ring + checkmark; persist selection immediately on click
+- [x] Add /settings/llm route to App.tsx
+- [x] Add AI Model Settings entry to adminItems in DashboardLayout.tsx sidebar
+- [x] Update changesync.test.ts mock to include getAppSetting/setAppSetting
+- [x] All 31 tests pass, TypeScript compiles cleanly
+
+## Duplicate Unit Fix & Version History (Apr 25 2026)
+- [x] Fix duplicate unit bug: when user enters "170gm" as newValue and document contains "155gm", output should be "170gm" not "170gm gm"
+- [x] Fix in wordModifier.py: compound-term search consumes unit suffix from document text (partial unit prefixes also tried)
+- [x] Fix in documentModifier.ts (PDF): buildNewValue() skips appending unit if newValue already ends with it; all unit-append sites fixed
+- [x] DB: add documentVersions table (id, documentId, versionNumber, fileUrl, fileKey, fileName, mimeType, changeEventId, changeNote, uploadedBy, uploadedByName, createdAt)
+- [x] Backend: documents.getVersionHistory procedure — list all versions for a document (newest first)
+- [x] Backend: version auto-created on GitHub import (v1) and on draft approval (vN+1 with change event link)
+- [x] Frontend: Document Library — History button on each document card opens slide-out version history drawer
+- [x] Frontend: Version history drawer shows timeline with version number, change event, notes, uploader, date, and View link
+- [x] All 31 tests pass, TypeScript compiles cleanly
+
+## Approver Page Blank Documents Fix (Apr 25 2026)
+- [x] Root cause: ApprovalPage DocPanel used sandbox="allow-same-origin" which blocks cross-origin PDF iframes; Word files showed download prompt instead of Office Online viewer
+- [x] Fix: rewrote DocPanel to match DraftReview.tsx logic — PDF iframes without sandbox, Office Online viewer for Word/Excel, error fallback to download
+- [x] Pass mimeType from document to DocPanel for accurate file type detection
+- [x] All 31 tests pass, TypeScript compiles cleanly
+
+## Word Document Formatting Preservation Fix (Apr 25 2026)
+- [x] Root cause: add_run helper stripped bold, color, and highlight from original run before applying hardcoded green color and forced bold
+- [x] Fix: rewrite _apply_highlight_in_paragraph to deep-copy original run XML verbatim for every segment (before/matched/after), preserving ALL formatting (font name, size, bold, italic, color, underline, strike, etc.)
+- [x] Only change: run.text is updated to replacement value; for annotate/modify_green modes, only <w:highlight> is added — nothing else
+- [x] Verified: bold=True, size=14pt, color=C00000 preserved in all three modes; highlight added only where expected
+- [x] All 31 tests pass, TypeScript compiles cleanly
+
+## Manual Comparison & Full Document-Impact Workflow (April 2026)
+
+- [x] Add manualDiff column to changeEvents table in schema (stores JSON array of ChangeEntry objects)
+- [x] Run pnpm db:push to migrate schema
+- [x] Add updateChangeEventManualDiff helper to db.ts
+- [x] Import updateChangeEventManualDiff in routers.ts
+- [x] Persist manualDiff to DB after compareManuals() in generateDrafts procedure
+- [x] Add "Detected Changes from Manuals" panel to ChangeDetail.tsx — shows each changed field with old (red strikethrough) → new (green) value
+- [x] Fix Word document formatting preservation in wordModifier.py — deep-copy original run XML, only change text and highlight
+- [x] Strengthen manualComparison.ts prompt: extract range values (75–90), multi-part intervals (4320 hrs / 180 days), short-name lubricant aliases
+- [x] Strengthen matchesOldValue in documentModifier.ts: normalise dash-ranges, comma-thousands, and whitespace for robust cell matching
+- [x] Extend analyzeImpact to also extract old values from uploaded manuals when no SKU changes are present
+
+## Bug Fix — Gearbox Change Over-Scoping (April 2026)
+
+- [x] Fix compareManuals prompt: restrict extraction to lubrication, safety, maintenance, and operations fields only — exclude motor specs, frame sizes, gear ratios, part numbers, and other values that do not appear in downstream documents
+- [x] Add documentCategory field to ChangeEntry interface and JSON schema so each extracted change knows which document type it targets
+- [x] Fix analyzeImpact: replace broad regex scan of old manual (all product names + all numeric values) with lubrication-only scan (lubricant names from lube-related lines, ml/days/hrs values only) to prevent false-positive impact flags on Safety Maps, CPE docs, etc.
+- [x] Fix generateDrafts: filter changesToApply by documentCategory before passing to modifier — lubrication changes only go to Lube Maps, safety changes only to Safety Maps, etc.
+
+## Weight Change Lube Map False Positive Bug (Apr 26 2026)
+- [x] Fix analyzeImpact: Weight Change events must NOT flag Lube Maps or any lubrication documents as impacted — weight changes are irrelevant to lubrication
+- [x] Ensure change type context (Weight Change vs Part Change) is passed to the LLM impact analysis prompt so it reasons correctly about relevance
+- [x] Add guard: if changeType is "weight" or "price", skip lubrication-category documents entirely in impact analysis
+
+## Equipment-Scoped Impact Analysis (Apr 26 2026)
+- [x] Fix analyzeImpact for Part Change: read each document's text row by row and only flag it if it actually references the affected equipment (e.g. "gearbox") — do not flag Driver Roller or other equipment documents just because they share a search term
+- [x] For Excel documents: scan each row and check if any cell in that row references the affected equipment name before flagging the document
+- [x] For PDF/Word documents: check that the document text contains the affected equipment name (not just the changed value) before auto-flagging
+- [x] Pass affectedEquipment to the LLM prompt as a hard constraint: only flag documents that reference that specific equipment
+
+## Approval Status Not Updating (Apr 28 2026)
+- [x] Fix: approving a document does not reflect as "approved" in the UI — root cause was stale tRPC cache; fixed by adding refetchInterval (5s) to DraftReview and ChangeDetail when draft is in routed_for_approval state, and refetchOnWindowFocus to Dashboard
+
+## Change Event Status Not Updating to Approved (Apr 28 2026)
+- [x] Fix: approveByToken never calls updateChangeEventStatus — change event stays "pending_approval" forever even after all drafts are approved
+- [x] After approving a draft, check if ALL drafts for that change event are now approved; if so, set change event status to "approved"
+- [x] Dashboard "Approved" count is always 0 because it counts change events with status="approved", not drafts
+
+## One Approval Should Mark Change Event as Approved (Apr 28 2026)
+- [x] Change event should move to "approved" status as soon as ANY single draft is approved, not only when all drafts are approved
+- [x] Update all three approval paths (approveByToken, drafts.approve, drafts.reject) to set change event to approved immediately on first approval
+
+## Part Change Lube Map Row-Level Fix (Apr 28 2026)
+- [x] Fix: extractLubeSection now correctly finds "Section 8 Lubrication" heading in both manuals
+- [x] Fix: extractLubricationFrequency now joins continuation lines so hours and days split across two PDF lines are both captured
+- [x] Verified end-to-end: old manual extracts Omala 220 / 75-90 ml / 4320 hrs (180 days); new manual extracts Mobil SHC 630 / 40 ml / 1440 hrs (60 days)
+- [x] Verified Lube Map row-level guard: 120 cells matched across all gearbox rows (rows 140-196), all other equipment rows untouched
+- [x] All 31 tests pass, TypeScript compiles cleanly
+
+## Dashboard Date/Time Display (Apr 29 2026)
+- [x] Show formatted date and time (e.g. "29 Apr 2026, 14:32") on each change event row in the Dashboard list
+
+## Impact Analysis Over-Flagging & Excel Row Guard (Apr 29 2026)
+- [x] Fix analyzeImpact: for Part Change with manuals, ONLY flag a document as impacted if its actual text content contains a reference to the affected equipment (e.g. "gear box", "gearbox"). Documents with no gearbox mention must be marked not impacted regardless of LLM reasoning.
+- [x] Fix Excel modifier: replace cells ONLY in rows where the nearest non-empty col A value matches the affected equipment name. Do not replace any cell in a Driver Roller row, Bearing row, Chain row, etc.
+- [x] The equipment name from the change event (affectedEquipment field) must be passed all the way through analyzeImpact → generateDrafts → modifyDocument as a hard constraint.
+
+## Excel Highlighting Precision Fix (Apr 29 2026)
+- [x] Fix annotateOriginalExcel: scan ALL rows for matching old values, but only apply YELLOW highlight when the matching cell is also in an equipment row (col A = affected equipment). Non-equipment rows with the same value are left untouched.
+- [x] Fix modifyExcelGreen: same logic — only update cell value and apply GREEN highlight when the matching cell is in an equipment row. Other rows with the same value are left unchanged.
+- [x] Fix modifyExcelClean: same logic — only update cell value when the matching cell is in an equipment row.
+- [x] Net result: only the specific changed cells (lubricant name, quantity, frequency) in the gearbox section are highlighted; no other rows are touched or highlighted.
+
+## Excel Row Guard Precision Fix (Apr 29 2026)
+- [x] Fix isEquipmentRow: the Lube Map has ONE data row per component (e.g. row 71 for Gear box) followed by 7 empty spacer rows. The current "walk upward to find nearest non-empty col A" logic incorrectly marks all 7 empty spacer rows as equipment rows too, causing too many rows to be highlighted. Fix: only return true if col A of the CURRENT row itself matches the equipment name — do NOT walk upward. Empty rows (col A is blank) are never data rows and must never be highlighted.
+
+## Impact Analysis — Part Change with Manual Upload (Apr 29 2026)
+- [x] For Part Change with uploaded manuals: impact analysis must be DETERMINISTIC, not LLM-driven. The manual diff is the ground truth. Only flag documents whose TYPE matches the changed fields: if lubricant/qty/frequency changed → only Lube Map documents get flagged. Do NOT use search-term scanning (which flags any doc containing "Omala 220") and do NOT use LLM for impact scoring on Part Changes with manuals.
+- [x] All other document types (Safety Map, CPE, PM Plan, CIL, etc.) must be marked NOT IMPACTED for a Part Change where only lubrication fields changed. They should only be flagged if the change event text notes or manual diff explicitly mentions safety, PM, or other domain-specific changes.
+
+## Zoom + Row Guard Fix (Apr 29 2026)
+- [x] Add zoom in/out controls to the DraftReview split-view document windows (both left and right panels)
+- [x] Fix row guard: non-gearbox rows (e.g. "Cam shaft taper") are being highlighted — diagnose why isEquipmentRow is returning true for them and fix (confirmed via Python diagnostic: isEquipmentRow correctly returns false for Cam Shaft Taper rows; old drafts were generated before the fix)
+
+## Right Panel Zoom + Yellow Highlight Scope (Apr 29 2026)
+- [x] Fix: right panel (Updated Document) zoom controls are not rendering — moved to a dedicated second header row so they're always visible regardless of how many action buttons are present
+- [x] Fix: left panel (Original) yellow highlighting is showing Cam Shaft Taper rows as yellow — root cause was break instead of return in the eachCell callback; the equipment row guard check now uses return to skip the entire cell, not break to stop the inner loop
+
+## affectedEquipment Not Passed to modifyDocument (Apr 29 2026)
+- [x] Diagnose: affectedEquipment is not being passed correctly to modifyDocument in generateDrafts — all rows get highlighted instead of only Gear box rows. Root cause: isEquipmentRow returned true for all rows when equipmentName was empty ("no equipment specified — accept all rows"). Fix: (1) isEquipmentRow now returns false when empty, (2) all three Excel functions always call isEquipmentRow unconditionally, (3) generateDrafts and reGenerateModifiedFile now derive effectiveEquipment from event.affectedEquipment OR infer it from the event title when affectedEquipment is blank.
+
+## Merged Cell Root Cause Fix (Apr 29 2026)
+- [x] Root cause of 40-row highlighting: ExcelJS reports the same merged cell value on EVERY row in a merge range. The Lube Map uses merged cells for col A (e.g. "Gear box" spans rows 71-78) AND for data cols G/J/K. Without the isMasterCell guard, all 8 rows in the merge get highlighted. Fix: added isMasterCell() helper that returns true only for the top-left master cell of a merge range. All three Excel functions (annotateOriginalExcel, modifyExcelGreen, modifyExcelClean) now skip non-master cells. Simulation confirmed: exactly 15 cells across 5 rows (3 cells per Gear box entry) are highlighted — zero extra rows.
+
+## Only Highlight Actually Changed Values (Apr 29 2026)
+- [x] Fix: changes where oldValue === newValue (e.g. qty "75-90 ml" unchanged, frequency "4320 hrs" unchanged) must be completely excluded from the replacementChanges array. Currently these are included and cause false highlights on ALL rows that share the same value (e.g. every component with frequency "4320 hrs / 180 days" gets highlighted yellow). Fix in both documentModifier.ts (filter replacementChanges) and in compareManuals.ts (only return changes where old != new).
+
+## ExcelJS Fill Propagation Root Cause Fix (Apr 29 2026)
+- [x] Root cause: ExcelJS shares style objects between adjacent merged cells. Setting a fill on G71 causes ExcelJS to write that fill to the shared style used by many other cells (B63-B70, etc.) in the worksheet XML. The post-processing approach (write → read back → clear) also failed because clearing a slave cell's fill modifies the same shared style object as the master cell.
+- [x] Fix: completely replaced ExcelJS fill-setting with a pure JSZip XML approach. New `applyHighlightsToExcelXml()` function: (1) adds highlight fill to styles XML, (2) reads the correct xf count from `<cellXfs count="N">` attribute (not regex match count — regex misses multi-line entries), (3) creates new xf entries for each cell's original style + highlight fill, (4) patches cell `s` attributes in worksheet XML directly. ExcelJS is now only used to FIND which cells to highlight and to write new values — never to set fills.
+- [x] Simulation verified: exactly 10 cells (G71, J71, G88, J88, G138, J138, G147, J147, G189, J189) highlighted for a 2-field change (lubricant name + quantity) across 5 Gear box rows. Zero unwanted cells.
+- [x] All 31 tests pass, TypeScript compiles cleanly.
+
+## Remove Signup Option (Apr 29 2026)
+- [x] Remove "Sign up" / "Create account" link from Login page
+- [x] Redirect /register route to /login (or remove it entirely)
+- [x] Remove Register link from any other pages that reference it
+
+## Make Dashboard Publicly Accessible (Apr 29 2026)
+- [x] Remove login redirect from DashboardLayout so unauthenticated users reach the dashboard
+- [x] Keep login/logout available but not required
+- [x] Ensure tRPC procedures used on public pages don't throw auth errors for unauthenticated visitors
+
+## Professor Account Setup (Apr 29 2026)
+- [x] Restore login redirect in DashboardLayout
+- [x] Restore global auth redirect in main.tsx
+- [x] Create professor account: professor@changesync.com / ChangeSync2026
+
+## Remove Login Screen Entirely (Apr 29 2026)
+- [x] Remove auth guard from DashboardLayout (no redirect to /login)
+- [x] Remove global auth redirect from main.tsx
+- [x] Make changeEvents.list and documents.list publicProcedure
+- [x] Remove /login route from App.tsx (or redirect to /)
+- [x] Update sidebar/topbar to hide login button
+
+## OAuth Auto-Account + Professor Access (Apr 29 2026)
+- [x] Wire Manus OAuth callback to auto-create ChangeSync user on first sign-in
+- [x] Restore email/password login screen so professor can also use credentials
+- [x] Ensure professor@changesync.com / ChangeSync2026 account exists with admin role
+
+## Fix Manus OAuth Redirect Error (Apr 29 2026)
+- [x] Add /manus-oauth/callback route to server to match platform redirect URI
+
+## Login Bug Fix (April 2026)
+- [x] Fix login issue on live site — all OAuth sign-ins now get admin role automatically; no second email/password login needed
+
+## Bug Fix — Create Change Event Auth Error (April 2026)
+- [x] Fix "Failed to create change event" error on published site — root cause: verifySession rejected sessions where name was empty (some OAuth providers don't return a display name). Fixed: name is now optional in session validation; fallback to email or 'User' when name is missing.
+
+## Open Access — No Login Required (April 2026)
+- [x] Convert all protectedProcedure to publicProcedure so all API calls work without a session
+- [x] Remove auth redirect from main.tsx (no redirect to /login on unauthorized errors)
+- [x] Remove auth guard from DashboardLayout (no redirect to /login for unauthenticated users)
+- [x] Remove Sign In button/link from sidebar and any other UI
+- [x] Remove /login, /forgot-password, /reset-password routes from App.tsx
+- [x] Handle ctx.user being null in procedures that reference it (e.g. createdBy field)
+
+## Fix /login 404 (April 2026)
+- [x] Add redirect from /login (and /forgot-password, /reset-password) to / so stale links don't 404
+
+## Bug Fix — Wrong Document in Weight Change Impact Analysis (April 2026)
+- [x] Fix: weight change impact analysis now always flags Line Clearance/Changeover docs; excludes change-record docs whose name contains "weight change"
+
+## Bug Fix — Missing Green Highlights in Document Preview (April 2026)
+- [x] Fix: changed values (e.g. 155gm → 170gm) — Office Online does not render ExcelJS/Word fill colours; change annotation bar now shown ABOVE the iframe in the right panel with before/after chips (strikethrough old value, green badge new value); green highlights still visible in downloaded file
+
+## Bug Fix — Weight Change 155 → 170 Not Applied to Document (April 2026)
+- [x] Diagnose why weight change (155 → 170) is not being applied to the modified document — right panel shows 155gm unchanged
+- [x] Fix 1: isEquipmentRow returned false (blocking ALL rows) when no equipment specified — now returns true (allow all rows) for weight/price changes
+- [x] Fix 2: matchesOldValue rejected short values like "155" (< 6 chars) — added compound unit matching (155g, 155gm, 155 g, 155 gm) and numeric prefix matching
+- [x] Fix 3: buildNewValue did not handle compound cell values like "155gm" when old="155" unit="g" — now preserves the unit suffix from the original cell
+- [x] Fix 4: effectiveEquipment was inferred from the event title for weight/price changes (e.g. "weight" from "Weight Change") — now forced to empty string so equipment row guard is bypassed entirely for these change types
+- [x] wordModifier.py already had compound-term search (155g, 155gm, 155 g) — confirmed working
+
+## Bug Fix — Highlights Not Visible to External Users (April 2026)
+- [x] Diagnose why yellow/green highlights are visible to owner but not to external users on the published app
+- [x] Fix: root cause was older drafts (generated before annotation feature) had modifiedFileUrl but no annotatedOriginalUrl. DraftReview now auto-silently-regenerates such drafts on first open so all users see highlighted versions. New drafts always have annotatedOriginalUrl populated.
+
+## Bug Fix — Right Panel Broken in DraftReview (April 2026)
+- [x] Fix: right panel shows plain text instead of Office Online iframe — removed duplicate ChangeAnnotationPanel below the iframe that was pushing the iframe out of view; kept only the compact change chips bar above the iframe
+
+## Critical Fix — Production Document Modifier (April 2026)
+- [x] Replace extractPageWords() pdftotext -bbox call with pure JS using pdf-parse v2 getTextContent API
+- [x] Replace extractDocumentContent() pdftotext -layout call with pure JS using pdf-parse v2 getText API
+- [x] Replace runWordModifierPy() python3.11 call with pure JS using JSZip XML manipulation (port wordModifier.py logic)
+- [x] Replace manualComparison.ts extractFileText() pdftotext/python3.11 calls with pdf-parse and mammoth
+- [x] Replace routers.ts pdftotext impact-scan call with pdf-parse v2 getText API
+- [x] Remove dead parseBboxHtml function (no longer needed)
+- [x] TypeScript check passes (npx tsc --noEmit)
+- [x] Tests pass (pnpm test)
+- [x] Save checkpoint and deploy
+
+## Bug Fix — No Changes Applied to Drafts After Pure JS Migration (April 2026)
+- [x] Diagnose why runWordModifierJs / extractPageWords are not applying changes to documents
+- [x] Fix the root cause — pdf.js text items are fragmented; rewrote to line-based concatenation with character-level position mapping
+- [x] Verify fix works end-to-end
+
+## UI Fix — DraftReview Right Panel Layout
+- [x] Move document preview (Excel/PDF viewer) to the top of the right panel
+- [x] Move the change list (green highlights summary) below the document preview
+
+## Bug Fix — Impact Analysis Should Scan Documents Before Flagging
+- [x] Investigate how documents are currently flagged (by type/name vs by content scan)
+- [x] Fix logic to only flag documents that actually contain the old values being changed
+- [x] Ensure the system scans all documents in the library, checks which contain gearbox-related values, and only flags those

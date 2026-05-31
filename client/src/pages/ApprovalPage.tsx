@@ -10,7 +10,7 @@
  *  3. Change log table (what changed)
  *  4. Approve / Reject form with notes — all on the same page, no separate clicks
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -26,20 +26,32 @@ function getQueryParam(key: string): string {
   return params.get(key) ?? "";
 }
 
-/** Render a document URL in an iframe (PDF/Word) or as an image */
+/** Render a document URL in an iframe (PDF/Word/Excel) or as an image — mirrors DraftReview.tsx logic */
 function DocPanel({
   url,
   label,
   badge,
   badgeColor,
   fileName,
+  mimeType,
 }: {
   url: string | null | undefined;
   label: string;
   badge: string;
   badgeColor: string;
   fileName?: string | null;
+  mimeType?: string | null;
 }) {
+  const [pdfError, setPdfError] = useState(false);
+  const [officeError, setOfficeError] = useState(false);
+  // Reset error states when URL changes
+  const prevUrl = useRef(url);
+  if (prevUrl.current !== url) {
+    prevUrl.current = url;
+    setPdfError(false);
+    setOfficeError(false);
+  }
+
   if (!url) {
     return (
       <div className="flex flex-col h-full">
@@ -62,8 +74,14 @@ function DocPanel({
     );
   }
 
-  const isImage = /\.(png|jpg|jpeg|gif|webp)$/i.test(url);
-  const isWord = /\.(docx|doc)$/i.test(url) || (fileName && /\.(docx|doc)$/i.test(fileName));
+  const mime = mimeType ?? "";
+  const urlLower = url.toLowerCase();
+  const isPdf = mime.includes("pdf") || urlLower.includes(".pdf");
+  const isImage = mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(urlLower);
+  const isExcel = mime.includes("spreadsheet") || mime.includes("excel") || urlLower.includes(".xlsx") || urlLower.includes(".xls");
+  const isWord = mime.includes("word") || mime.includes("msword") || urlLower.includes(".docx") || urlLower.includes(".doc");
+  const canUseOfficeViewer = (isExcel || isWord) && !officeError;
+  const officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
 
   return (
     <div className="flex flex-col h-full">
@@ -79,49 +97,55 @@ function DocPanel({
           </span>
           <a
             href={url}
-            download
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-70"
             style={{ color: "oklch(0.45 0.18 265)" }}
-            title="Download this document"
+            title="Open document in new tab"
           >
             <Download className="h-3.5 w-3.5" />
           </a>
         </div>
       </div>
 
-      {/* Document viewer */}
+      {/* Document viewer — no sandbox attribute so cross-origin PDFs load correctly */}
       <div className="flex-1 overflow-hidden" style={{ background: "oklch(0.94 0.006 255)" }}>
         {isImage ? (
           <img src={url} alt={label} className="w-full h-full object-contain p-4" />
-        ) : isWord ? (
-          /* Word docs: show download prompt since browsers can't render .docx inline */
+        ) : isPdf && !pdfError ? (
+          <iframe
+            src={`${url}#toolbar=1&navpanes=0`}
+            title={label}
+            className="w-full h-full border-0"
+            onError={() => setPdfError(true)}
+          />
+        ) : canUseOfficeViewer ? (
+          <iframe
+            src={officeViewerUrl}
+            title={label}
+            className="w-full h-full border-0"
+            onError={() => setOfficeError(true)}
+            allow="fullscreen"
+          />
+        ) : (
+          /* Fallback: download prompt */
           <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
             <FileText className="h-12 w-12 text-muted-foreground opacity-50" />
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">Word Document</p>
-              <p className="text-xs text-muted-foreground">Download to view the {badge.toLowerCase()} version</p>
+              <p className="text-sm font-semibold text-foreground">{isWord ? "Word Document" : isExcel ? "Spreadsheet" : "Document"}</p>
+              <p className="text-xs text-muted-foreground">Click below to open the {badge.toLowerCase()} version</p>
             </div>
             <a
               href={url}
-              download
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
               style={{ background: badgeColor }}
             >
               <Download className="h-4 w-4" />
-              Download {badge} Version
+              Open {badge} Version
             </a>
           </div>
-        ) : (
-          <iframe
-            src={url}
-            className="w-full h-full border-0"
-            title={label}
-            sandbox="allow-same-origin allow-scripts allow-popups"
-          />
         )}
       </div>
     </div>
@@ -294,6 +318,7 @@ export default function ApprovalPage() {
               badge="ORIGINAL"
               badgeColor="oklch(0.62 0.16 85)"
               fileName={doc?.fileName}
+              mimeType={doc?.mimeType}
             />
           </div>
           {/* RIGHT: Modified with green highlights */}
@@ -304,6 +329,7 @@ export default function ApprovalPage() {
               badge="MODIFIED"
               badgeColor="oklch(0.50 0.16 145)"
               fileName={doc?.fileName}
+              mimeType={doc?.mimeType}
             />
           </div>
         </div>
